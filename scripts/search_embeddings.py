@@ -1,4 +1,16 @@
+"""Stage 1D - real pgvector semantic search from a user query.
+
+Takes a query string from the command line, embeds it with EmbeddingGemma,
+and asks PostgreSQL to rank the stored chunks by cosine distance.
+
+    python scripts/search_embeddings.py "low hydraulic pressure"
+
+If no query is supplied, falls back to a default so quick sanity runs
+still work.
+"""
+
 import os
+import sys
 
 import httpx
 import psycopg
@@ -7,6 +19,9 @@ import psycopg
 OLLAMA_URL = "http://localhost:11434/api/embed"
 EMBEDDING_MODEL = "embeddinggemma"
 EMBEDDING_DIMENSIONS = 768
+
+DEFAULT_QUERY = "Aircraft engine shaking while ascending."
+TOP_K = 5
 
 
 def get_embedding(text: str) -> list[float]:
@@ -38,7 +53,10 @@ def vector_to_pgvector(embedding: list[float]) -> str:
 
 
 def main() -> None:
-    query = "Aircraft engine shaking while ascending."
+    # sys.argv[0] is the script path, [1:] is the arg list. Join so a
+    # multi-word query without shell quotes still works.
+    argv_query = " ".join(sys.argv[1:]).strip()
+    query = argv_query or DEFAULT_QUERY
 
     query_embedding = get_embedding(query)
     query_vector = vector_to_pgvector(query_embedding)
@@ -63,11 +81,12 @@ def main() -> None:
                 FROM document_chunks
                 WHERE embedding IS NOT NULL
                 ORDER BY embedding <=> %s::vector
-                LIMIT 5;
+                LIMIT %s;
                 """,
                 (
                     query_vector,
                     query_vector,
+                    TOP_K,
                 ),
             )
 
@@ -75,6 +94,10 @@ def main() -> None:
 
     print(f"Query: {query}")
     print()
+
+    if not results:
+        print("No chunks in the database yet.")
+        return
 
     for rank, row in enumerate(results, start=1):
         chunk_id, content, metadata, distance = row
