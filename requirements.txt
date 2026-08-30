@@ -1,2 +1,16 @@
 httpx==0.28.1
 psycopg[binary]==3.3.4
+
+# API layer
+fastapi>=0.115
+uvicorn[standard]>=0.30
+
+# Database
+sqlalchemy[asyncio]>=2.0.30
+asyncpg>=0.29
+alembic>=1.13
+pgvector>=0.3.6
+
+# Config & logging
+pydantic-settings>=2.3
+structlog>=24.1
