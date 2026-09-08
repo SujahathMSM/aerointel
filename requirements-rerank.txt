@@ -1,0 +1,5 @@
+# Optional heavy dependency for cross-encoder reranking (Phase 1 step 3).
+# Install with: pip install -r requirements-rerank.txt
+# Kept out of requirements.txt so the Docker image stays lean; the reranker
+# is feature-flagged and lazy-imports this package only when enabled.
+sentence-transformers>=3.0

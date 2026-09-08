@@ -66,3 +66,11 @@ jobs:
 
       - name: Run tests (unit + Postgres integration, no Ollama)
         run: pytest -m "not local" -v
+
+      # The eval harness is the scoreboard for retrieval quality. Real
+      # numbers need EmbeddingGemma and are produced locally with
+      # `python -m evals.run_eval`; what CI guards is that the harness
+      # itself still runs — a silently broken scoreboard is how a quality
+      # regression reaches main with nobody noticing.
+      - name: Eval harness smoke test
+        run: pytest tests/test_eval_harness.py tests/test_eval_metrics.py tests/test_faithfulness.py -v

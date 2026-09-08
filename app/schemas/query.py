@@ -19,3 +19,6 @@ class QueryResponse(BaseModel):
     answer: str | None = None
     refusal_message: str | None = None
     chunks: list[RetrievedChunk] = []
+    # Which prompt version produced the answer; None on a refusal, where no
+    # prompt was used because the model was never called.
+    prompt_version: str | None = None

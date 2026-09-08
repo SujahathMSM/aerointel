@@ -1,0 +1,50 @@
+[
+  {
+    "question": "what should I check if hydraulic pressure drops below 180 bar?",
+    "expected": { "source": "hydraulic_manual", "section": "5.4" }
+  },
+  {
+    "question": "hydraulic system is losing pressure during flight, what do I do?",
+    "expected": { "source": "hydraulic_manual", "section": "5.4" }
+  },
+  {
+    "question": "when do the passenger oxygen masks deploy automatically?",
+    "expected": { "source": "pressurization_manual", "section": "3.2" }
+  },
+  {
+    "question": "cabin altitude is climbing past ten thousand feet, what happens?",
+    "expected": { "source": "pressurization_manual", "section": "3.2" }
+  },
+  {
+    "question": "how hot can the brakes get before they need a cooling period?",
+    "expected": { "source": "brake_manual", "section": "7.1" }
+  },
+  {
+    "question": "overheated brakes during taxi - is there a fuse plug risk?",
+    "expected": { "source": "brake_manual", "section": "7.1" }
+  },
+  {
+    "question": "engine vibration detected during climb, what could it indicate?",
+    "expected": { "source": "engine_manual", "section": "2.9" }
+  },
+  {
+    "question": "the engine is shaking while the aircraft ascends, should I worry?",
+    "expected": { "source": "engine_manual", "section": "2.9" }
+  },
+  {
+    "question": "one flight control surface has low actuator pressure but system pressure is normal",
+    "expected": { "source": "hydraulic_manual", "section": "5.7" }
+  },
+  {
+    "question": "restriction downstream of the manifold - which valves should I check?",
+    "expected": { "source": "hydraulic_manual", "section": "5.7" }
+  },
+  {
+    "question": "the filter clogging indicator button has popped, what is required?",
+    "expected": { "source": "hydraulic_manual", "section": "5.5" }
+  },
+  {
+    "question": "differential pressure across the hydraulic filter is above 2.5 bar",
+    "expected": { "source": "hydraulic_manual", "section": "5.5" }
+  }
+]

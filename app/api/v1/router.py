@@ -8,7 +8,7 @@ from app.schemas.query import QueryRequest, QueryResponse, RetrievedChunk
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services.generation import NO_CONTEXT_MESSAGE, answer_question
 from app.services.ingestion import ingest_chunk
-from app.services.retrieval import search_chunks
+from app.services.pipeline import retrieve
 
 router = APIRouter(prefix="/v1", tags=["v1"])
 logger = get_logger(__name__)
@@ -42,22 +42,27 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
         "query answered",
         chunks_used=len(result.chunks),
         answer_chars=len(result.answer or ""),
+        prompt_version=result.prompt_version,
     )
     return QueryResponse(
         question=result.question,
         refused=False,
         answer=result.answer,
         chunks=[_to_retrieved(c, d) for c, d in result.chunks],
+        prompt_version=result.prompt_version,
     )
 
 
 @router.post("/search", response_model=SearchResponse)
 async def search(body: SearchRequest, session: SessionDep, ollama: OllamaDep):
-    """Semantic search only — no generation, no LLM call."""
+    """Search only — no generation, no LLM call.
+
+    Same retrieval pipeline as /v1/query (hybrid + reranking, both
+    feature-flagged in settings), so what this endpoint shows you is
+    exactly what /v1/query's grounding actually saw.
+    """
     settings = get_settings()
-    results = await search_chunks(
-        session, ollama, body.query, body.top_k or settings.top_k
-    )
+    results = await retrieve(session, ollama, body.query, body.top_k or settings.top_k)
     return SearchResponse(
         query=body.query,
         results=[_to_retrieved(chunk, distance) for chunk, distance in results],

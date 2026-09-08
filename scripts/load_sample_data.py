@@ -38,7 +38,11 @@ CHUNKS = [
         "Cabin altitude above 10000 feet triggers automatic deployment of "
         "passenger oxygen masks. Crew should confirm cabin pressurization "
         "status before initiating an emergency descent.",
-        {"source": "pressurization_manual", "section": "3.2", "category": "pressurization"},
+        {
+            "source": "pressurization_manual",
+            "section": "3.2",
+            "category": "pressurization",
+        },
     ),
     (
         "Brake temperature exceeding 300 degrees Celsius requires a "
@@ -84,8 +88,7 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
     for embedding in embeddings:
         if len(embedding) != EMBEDDING_DIMENSIONS:
             raise ValueError(
-                f"expected {EMBEDDING_DIMENSIONS} dimensions, "
-                f"got {len(embedding)}"
+                f"expected {EMBEDDING_DIMENSIONS} dimensions, got {len(embedding)}"
             )
 
     return embeddings
@@ -117,14 +120,16 @@ def main() -> None:
             for (content, metadata), embedding in zip(CHUNKS, embeddings):
                 cur.execute(
                     """
-                    INSERT INTO document_chunks (content, metadata, embedding)
-                    VALUES (%s, %s, %s::vector)
+                    INSERT INTO document_chunks
+                        (content, metadata, embedding, embedding_model)
+                    VALUES (%s, %s, %s::vector, %s)
                     RETURNING id;
                     """,
                     (
                         content,
                         Jsonb(metadata),
                         vector_to_pgvector(embedding),
+                        EMBEDDING_MODEL,
                     ),
                 )
                 inserted_ids.append(cur.fetchone()[0])
