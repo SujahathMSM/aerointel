@@ -22,7 +22,7 @@ prompt.
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting, JWT auth, idempotency keys, SSE streaming, semantic response cache | not started |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth, idempotency keys, SSE streaming, semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion (page-level citations), HNSW index, pgBouncer, read replica, MinIO | not started |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
@@ -117,7 +117,7 @@ no defaults for secrets), `logging.py` (structlog JSON + request-ID middleware),
 | Resilience | Hand-rolled retry + circuit breaker (`app/core/resilience.py`), httpx timeouts |
 | Ops | structlog (JSON logs + request IDs), Docker, Docker Compose, GitHub Actions CI |
 | Test / lint | pytest, pytest-asyncio, ruff, mypy |
-| Messaging (provisioned, unused until Phase 2+) | Redis |
+| Rate limiting / messaging | Redis (token buckets now; Streams in Phase 3) |
 
 ## Project structure
 
@@ -128,8 +128,9 @@ app/
     config.py           typed Settings, env/.env driven
     logging.py           structlog JSON logs, RequestIdMiddleware
     resilience.py         retry() with backoff, CircuitBreaker
+    rate_limit.py          Redis token bucket (Lua), fail-open/closed on Redis outage
   api/
-    deps.py              FastAPI dependencies (DB session, Ollama client)
+    deps.py              FastAPI dependencies (DB session, Ollama client, rate limit)
     health.py             /health/live, /health/ready
     v1/router.py           /v1/query, /v1/search, /v1/ingest
   db/
@@ -193,6 +194,33 @@ Interactive API docs: http://localhost:8000/docs
 | `POST /v1/ingest` | Embed and store one chunk of text with metadata. |
 | `GET /health/live` | Is the process up? Checks nothing — always `200` if alive. |
 | `GET /health/ready` | Can we serve traffic? Verifies the database is reachable; `503` if not. |
+
+### Rate limiting (Phase 2)
+
+Every `/v1/*` request spends one token from its client's bucket in Redis.
+Defaults: bursts of up to **20** requests, then a sustained **30/minute**
+(`0.5` tokens/second). An empty bucket returns `429 Too Many Requests` with a
+`Retry-After` header (whole seconds until a token is back); every allowed
+response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`. `/health/*`
+is never limited, so a load balancer's probes can't get the service marked dead.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `true` | `false` switches limiting off entirely. |
+| `RATE_LIMIT_CAPACITY` | `20` | Bucket size = the largest burst allowed. |
+| `RATE_LIMIT_REFILL_PER_SECOND` | `0.5` | Sustained rate (0.5/s = 30/min). |
+| `RATE_LIMIT_FAIL_OPEN` | `true` | Redis down: `true` lets requests through (logged as degraded), `false` returns `503`. |
+| `REDIS_URL` | `redis://localhost:6379/0` | Set to `redis://redis:6379/0` inside Docker Compose (already done in `docker-compose.yml`). |
+
+Design notes: the bucket lives in Redis rather than in process memory because
+every worker/replica must share one budget; the refill-and-spend step is a
+single Lua script so concurrent requests can't race past the limit (a test
+fires 25 concurrent requests at a 5-token bucket and asserts exactly 5 get
+through); Redis calls have a 0.5 s timeout plus a circuit breaker, so a dead
+Redis costs a few fast failures, not a slow API. Clients are identified by IP
+for now — there is no auth yet, and trusting a client-sent header would let
+anyone reset their own limit. When JWT auth lands, the identity becomes the
+token's subject.
 
 ### Try it
 

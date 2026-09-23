@@ -44,6 +44,18 @@ class Settings(BaseSettings):
     # ("v1") to freeze behavior while a newer one is being evaluated.
     prompt_version: str | None = None
 
+    # Rate limiting (Phase 2): token bucket per client, stored in Redis so
+    # every worker/replica shares one budget. Defaults: bursts of up to 20
+    # requests, then a sustained 30/minute (0.5 tokens/second).
+    redis_url: str = "redis://localhost:6379/0"
+    rate_limit_enabled: bool = True
+    rate_limit_capacity: int = 20
+    rate_limit_refill_per_second: float = 0.5
+    rate_limit_key_prefix: str = "ratelimit"
+    # Redis down: True = let requests through (limiter is protection, not a
+    # dependency), False = 503 everything until Redis is back.
+    rate_limit_fail_open: bool = True
+
     # Resilience
     ollama_timeout_seconds: float = 180.0
     ollama_max_retries: int = 3

@@ -1,6 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from app.api.deps import OllamaDep, SessionDep
+from app.api.deps import OllamaDep, SessionDep, enforce_rate_limit
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.schemas.ingest import IngestRequest, IngestResponse
@@ -10,7 +10,12 @@ from app.services.generation import NO_CONTEXT_MESSAGE, answer_question
 from app.services.ingestion import ingest_chunk
 from app.services.pipeline import retrieve
 
-router = APIRouter(prefix="/v1", tags=["v1"])
+# Every /v1 route spends a rate-limit token before it runs. Health checks
+# live on a separate router on purpose: a load balancer probing /health must
+# never be throttled into marking the service dead.
+router = APIRouter(
+    prefix="/v1", tags=["v1"], dependencies=[Depends(enforce_rate_limit)]
+)
 logger = get_logger(__name__)
 
 

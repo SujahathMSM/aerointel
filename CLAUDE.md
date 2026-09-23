@@ -5,9 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 AeroIntel is an aviation-maintenance RAG service, built stage by stage with each
-stage proven by its own tests before the next starts. Currently at Phase 1
-(hybrid retrieval + eval harness); Phase 2+ (rate limiting, auth, event-driven
-ingestion, k8s deploy, observability) are not started. See the Status table and
+stage proven by its own tests before the next starts. Phase 1 (hybrid
+retrieval + eval harness) is closed. Phase 2 is in progress: Redis rate limiting
+is done; JWT auth, idempotency keys, SSE streaming and the semantic cache are
+not started, nor is anything from Phase 3 on (event-driven ingestion, k8s
+deploy, observability). See the Status table and
 Roadmap in `README.md` for the full plan — don't reimplement later-phase work
 prematurely.
 
@@ -80,6 +82,10 @@ concerns) -> `db/` (async SQLAlchemy 2.0 + pgvector) and `llm/ollama.py`
 a slow/dead Ollama fails fast instead of hanging the API. `app/core/config.py`
 holds typed `Settings` from env/`.env` with no defaults for secrets;
 `app/core/logging.py` provides structlog JSON logs + request-ID middleware.
+`app/core/rate_limit.py` is a Redis token bucket (atomic Lua script) applied to
+every `/v1` route via the router-level `enforce_rate_limit` dependency in
+`app/api/deps.py`; `/health/*` is deliberately outside it. A Redis outage is
+handled by a circuit breaker plus `RATE_LIMIT_FAIL_OPEN` (default: allow).
 
 **Prompts are versioned files**, not string literals: `app/prompts/<name>.<version>.txt`.
 Changing wording means adding a new `vN.txt` file, not editing one in place —
@@ -104,6 +110,7 @@ toy corpus.
 
 - `tests/` and `evals/` are excluded from mypy but linted by ruff.
 - Pytest markers: unmarked = fast/CI-safe, `integration` = needs real Postgres,
+  `redis` = needs real Redis (compose on localhost:6379 / CI service container),
   `local` = needs real Ollama + Postgres. Don't add `local`-marked tests to CI.
 - `scripts/` holds the original per-stage verification scripts (`ask.py`,
   `verify_*.py`) predating the FastAPI service — they still work standalone and
