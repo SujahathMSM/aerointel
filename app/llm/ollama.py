@@ -3,6 +3,15 @@ import httpx
 from app.core.config import Settings, get_settings
 from app.core.resilience import CircuitBreaker, retry
 
+# Only retry failures that retrying can plausibly fix. A 404 (model not
+# pulled) or a 400 will fail identically every time, so retrying just burns
+# time. Embeds are fast, so a timeout there is worth retrying; a chat read
+# timeout means the model is already slow, and re-sending the same prompt
+# would stack a second generation on top of the first -- so for chat we only
+# retry when the connection itself failed.
+_EMBED_RETRYABLE = (httpx.TransportError,)
+_CHAT_RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout)
+
 
 class OllamaClient:
     """Async Ollama client: timeout + retry + circuit breaker built in."""
@@ -23,12 +32,17 @@ class OllamaClient:
             response = await self._client.post(
                 "/api/embed",
                 json={"model": self.settings.embedding_model, "input": texts},
+                timeout=self.settings.ollama_embed_timeout_seconds,
             )
             response.raise_for_status()
             return response.json()["embeddings"]
 
         embeddings = await self.breaker.call(
-            lambda: retry(call, attempts=self.settings.ollama_max_retries)
+            lambda: retry(
+                call,
+                attempts=self.settings.ollama_max_retries,
+                retry_on=_EMBED_RETRYABLE,
+            )
         )
 
         for embedding in embeddings:
@@ -61,7 +75,11 @@ class OllamaClient:
             return response.json()["message"]["content"].strip()
 
         return await self.breaker.call(
-            lambda: retry(call, attempts=self.settings.ollama_max_retries)
+            lambda: retry(
+                call,
+                attempts=self.settings.ollama_max_retries,
+                retry_on=_CHAT_RETRYABLE,
+            )
         )
 
     async def close(self) -> None:

@@ -22,14 +22,26 @@ class _FakeChunk:
         self.metadata_ = {"source": source}
 
 
+class _FakeSession:
+    """Stands in for AsyncSession; records commit() in a shared event log."""
+
+    def __init__(self, events: list[str] | None = None):
+        self.events = events if events is not None else []
+
+    async def commit(self) -> None:
+        self.events.append("commit")
+
+
 class _FakeOllama:
     """chat() is recorded so a test can assert it was, or wasn't, called."""
 
-    def __init__(self, answer: str = "Answer with [1]."):
+    def __init__(self, answer: str = "Answer with [1].", events=None):
         self.answer = answer
         self.chat_calls: list[tuple[str, str]] = []
+        self.events = events if events is not None else []
 
     async def chat(self, system: str, user: str) -> str:
+        self.events.append("chat")
         self.chat_calls.append((system, user))
         return self.answer
 
@@ -44,11 +56,12 @@ async def test_answer_question_goes_through_pipeline_retrieve(monkeypatch):
     monkeypatch.setattr(generation, "retrieve", fake_retrieve)
 
     ollama = _FakeOllama()
+    session = _FakeSession()
     result = await generation.answer_question(
-        session="fake-session", ollama=ollama, question="what?", top_k=3
+        session=session, ollama=ollama, question="what?", top_k=3
     )
 
-    assert captured["args"] == ("fake-session", ollama, "what?", 3)
+    assert captured["args"] == (session, ollama, "what?", 3)
     assert result.refused is False
     assert result.answer == "Answer with [1]."
     assert ollama.chat_calls  # generation actually ran
@@ -66,7 +79,7 @@ async def test_answer_question_refusal_stays_structural(monkeypatch):
 
     ollama = _FakeOllama()
     result = await generation.answer_question(
-        session=None, ollama=ollama, question="what?"
+        session=_FakeSession(), ollama=ollama, question="what?"
     )
 
     assert result.refused is True
@@ -95,3 +108,24 @@ async def test_search_endpoint_goes_through_pipeline_retrieve(monkeypatch):
     assert len(response.results) == 1
     assert response.results[0].id == 2
     assert response.results[0].source == "unit_test"
+
+
+async def test_db_transaction_is_ended_before_the_llm_is_called(monkeypatch):
+    # The retrieval SELECT leaves a transaction (and a pooled connection)
+    # open. It must be committed *before* the slow chat() call, or every
+    # in-flight generation pins a connection for its whole duration.
+    events: list[str] = []
+
+    async def fake_retrieve(session, ollama, query, top_k=None, **kwargs):
+        events.append("retrieve")
+        return [(_FakeChunk(1, "hydraulic pressure content"), 0.1)]
+
+    monkeypatch.setattr(generation, "retrieve", fake_retrieve)
+
+    await generation.answer_question(
+        session=_FakeSession(events),
+        ollama=_FakeOllama(events=events),
+        question="what?",
+    )
+
+    assert events == ["retrieve", "commit", "chat"]

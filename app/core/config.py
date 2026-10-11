@@ -58,6 +58,9 @@ class Settings(BaseSettings):
 
     # Resilience
     ollama_timeout_seconds: float = 180.0
+    # Embedding one short string should take well under a second; waiting
+    # the full chat timeout on a hung embed call only ties up the request.
+    ollama_embed_timeout_seconds: float = 30.0
     ollama_max_retries: int = 3
     breaker_failure_threshold: int = 5
     breaker_recovery_seconds: float = 30.0

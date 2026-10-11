@@ -69,6 +69,8 @@ async def answer_question(
     top_k = top_k or settings.top_k
 
     retrieved = await retrieve(session, ollama, question, top_k)
+
+    await session.commit()
     relevant = [
         (chunk, distance)
         for chunk, distance in retrieved

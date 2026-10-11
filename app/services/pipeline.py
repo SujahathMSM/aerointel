@@ -5,6 +5,8 @@ measured is exactly what is served. Every stage is individually
 feature-flagged; with everything off this is the Phase 0 baseline.
 """
 
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -44,5 +46,10 @@ async def retrieve(
         candidates = await hybrid_search(session, ollama, query, candidate_k)
     else:
         candidates = await search_chunks(session, ollama, query, candidate_k)
+    if not reranking_active:
+        return rerank(query, candidates, active_reranker, top_k)
 
-    return rerank(query, candidates, active_reranker, top_k)
+    # The cross-encoder is synchronous, CPU-bound work. Called directly it
+    # would freeze the event loop (every other request) while it scores, so
+    # run it in a worker thread.
+    return await asyncio.to_thread(rerank, query, candidates, active_reranker, top_k)

@@ -75,13 +75,17 @@ jobs:
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
 
+      # Tests build their schema with create_all(), so without this step the
+      # Alembic migrations are never executed in CI and can drift from
+      # models.py unnoticed. Up, all the way down, and back up proves they
+      # apply and reverse cleanly; the final downgrade leaves an empty DB for
+      # the tests to create their own tables in.
+      - name: Migrations apply and reverse cleanly
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          alembic downgrade base
+
       - name: Run tests (unit + Postgres/Redis integration, no Ollama)
         run: pytest -m "not local" -v
-
-      # The eval harness is the scoreboard for retrieval quality. Real
-      # numbers need EmbeddingGemma and are produced locally with
-      # `python -m evals.run_eval`; what CI guards is that the harness
-      # itself still runs — a silently broken scoreboard is how a quality
-      # regression reaches main with nobody noticing.
-      - name: Eval harness smoke test
-        run: pytest tests/test_eval_harness.py tests/test_eval_metrics.py tests/test_faithfulness.py -v
