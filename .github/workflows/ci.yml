@@ -46,12 +46,23 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     env:
       POSTGRES_HOST: 127.0.0.1
       POSTGRES_PORT: 5432
       POSTGRES_DB: aerointel_test
       POSTGRES_USER: aerointel
       POSTGRES_PASSWORD: testpassword
+      REDIS_URL: redis://127.0.0.1:6379/0
 
     steps:
       - uses: actions/checkout@v4
@@ -64,7 +75,7 @@ jobs:
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Run tests (unit + Postgres integration, no Ollama)
+      - name: Run tests (unit + Postgres/Redis integration, no Ollama)
         run: pytest -m "not local" -v
 
       # The eval harness is the scoreboard for retrieval quality. Real
