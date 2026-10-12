@@ -3,6 +3,7 @@
 #   .\scripts\try_api.ps1 ingest "If brake temp exceeds 300C, cool before departure."
 #   .\scripts\try_api.ps1 query  "what should I check if hydraulic pressure drops?"
 #   .\scripts\try_api.ps1 search "engine shaking while ascending"
+#   .\scripts\try_api.ps1 stream "what should I check if hydraulic pressure drops?"
 #   .\scripts\try_api.ps1 health
 #
 # /v1 calls need a token. Set these once per shell (a client from AUTH_CLIENTS in .env):
@@ -64,8 +65,21 @@ switch ($Action) {
         $body = @{ query = $Text } | ConvertTo-Json
         Send-Json "POST" "/v1/search" $body
     }
+    "stream" {
+        if (-not $Text) { Write-Host "Usage: .\scripts\try_api.ps1 stream `<question`>" -ForegroundColor Red; exit 1 }
+        # -N turns off curl's output buffering so events print as they arrive.
+        $token = Get-Token
+        $file = New-TemporaryFile
+        (@{ question = $Text } | ConvertTo-Json) | Set-Content -Path $file -Encoding UTF8
+        try {
+            curl.exe -s -N -X POST "$Base/v1/query/stream" -H "Content-Type: application/json" -H "Authorization: Bearer $token" -d "@$file"
+        } finally {
+            Remove-Item $file -Force
+        }
+        Write-Host ""
+    }
     default {
-        Write-Host "Unknown action '$Action'. Use: health | ingest | query | search" -ForegroundColor Red
+        Write-Host "Unknown action '$Action'. Use: health | ingest | query | search | stream" -ForegroundColor Red
         exit 1
     }
 }

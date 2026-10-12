@@ -22,7 +22,7 @@ prompt.
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming, semantic response cache still to do | 🚧 in progress |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion (page-level citations), HNSW index, pgBouncer, read replica, MinIO | not started |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
@@ -192,6 +192,7 @@ Interactive API docs: http://localhost:8000/docs
 |---|---|
 | `POST /auth/token` | Trade a client id + secret for a short-lived access token. Rate limited by IP. |
 | `POST /v1/query` | Full grounded pipeline: embed → search → distance gate → generate with citations, or a structural refusal. Refusal is a normal `200` (`"refused": true`) — a successful outcome of the contract, not an error. |
+| `POST /v1/query/stream` | Same pipeline as `/v1/query`, but the answer arrives as Server-Sent Events, token by token. See [Streaming answers](#streaming-answers-phase-2). |
 | `POST /v1/search` | Semantic search only. No generation, no LLM call. |
 | `POST /v1/ingest` | Embed and store one chunk of text with metadata. Needs the `ingest` scope. |
 | `GET /health/live` | Is the process up? Checks nothing — always `200` if alive. |
@@ -271,6 +272,38 @@ asserts one insert). Each claim carries a random token and is released by a Lua
 script that checks it, so a slow request can't delete the claim of whoever took
 the key after it. The release is shielded from cancellation, because a client
 hanging up cancels the request mid-work.
+
+### Streaming answers (Phase 2)
+
+`POST /v1/query/stream` takes the same body as `/v1/query` (needs the `query`
+scope) and replies with `Content-Type: text/event-stream`. Retrieval and the
+refusal gate run **before** the first byte, so a bad request, missing scope,
+rate limit or retrieval failure is an ordinary HTTP error. After that the
+stream is a fixed sequence of events, each with a one-line JSON payload:
+
+| Event | Payload | When |
+|---|---|---|
+| `meta` | `question`, `refused`, `refusal_message`, `chunks` (the sources), `prompt_version` | Always first. The sources arrive before the answer, so a UI can show them while it types. |
+| `token` | `{"text": "..."}` | Repeated; concatenate the `text` values to build the answer. |
+| `done` | `{"refused": bool, "answer_chars": n}` | Last event on success. |
+| `error` | `{"detail": "Answer generation failed."}` | Only if generation fails after the stream began (the `200` is already sent). No `done` follows; details go to the logs, not the stream. |
+
+A refusal is just `meta` (`refused: true`) then `done`; the model is never
+called, exactly as for `/v1/query`. If the client disconnects mid-answer,
+generation stops and the connection to Ollama is closed.
+
+```powershell
+'{"question":"what should I check if hydraulic pressure drops?"}' | Set-Content q.json
+curl.exe -N -X POST http://localhost:8000/v1/query/stream -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "@q.json"
+# or: .\scripts\try_api.ps1 stream "what should I check if hydraulic pressure drops?"
+```
+
+Notes for client authors: it is a `POST`, so the browser `EventSource` API
+(GET only, no headers) cannot call it; use `fetch` and read `response.body`.
+Opening the stream to Ollama is protected by the same timeout / retry / circuit
+breaker as `/v1/query`, but a failure *mid-stream* is not retried (a retry would
+restart the answer and duplicate text). The per-chunk read timeout
+(`OLLAMA_TIMEOUT_SECONDS`) ends a stream whose model goes silent.
 
 ### Rate limiting (Phase 2)
 
@@ -403,6 +436,7 @@ against a real pgvector service container on every push.
 | `tests/test_health.py` | Liveness works, every response carries `x-request-id`, empty questions are rejected with `422` before touching services | nothing |
 | `tests/test_search_synthetic.py` | pgvector ranks by meaning using orthogonal synthetic vectors — no real embedding model needed to prove the math | Postgres only (CI) |
 | `tests/test_rag_local.py` | Full grounding contract with real Ollama: matched question → cited answer, unmatched question → refusal | Ollama + Postgres |
+| `tests/test_streaming.py` | Ollama stream parsing (ordering, whitespace trimming equals `chat()`, error lines, retry/circuit rules, connection closed on early stop); SSE format; the `/v1/query/stream` event sequence, refusal never reaching the model, in-band errors that don't leak, auth/scope/validation, and client disconnect ending generation (ASGI 2.3 and 2.4 styles) | Redis for the endpoint tests |
 | `tests/test_eval_metrics.py` | Eval metric math (recall@k, MRR, aggregation) + golden-set well-formedness | nothing |
 
 ## Retrieval evals (the scoreboard)

@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +40,24 @@ class AnswerResult:
     prompt_version: str | None = None
 
 
+@dataclass
+class PreparedAnswer:
+    """Everything decided before the model is called.
+
+    Retrieval, the distance gate and prompt assembly happen here, once, for
+    both the plain and the streaming endpoint. `refused` means nothing cleared
+    the ceiling: `system`/`prompt` are then None and the model must not be
+    called.
+    """
+
+    question: str
+    refused: bool
+    chunks: list = field(default_factory=list)
+    system: str | None = None
+    prompt: str | None = None
+    prompt_version: str | None = None
+
+
 def build_prompt(question: str, chunks: list[tuple]) -> str:
     """Numbered CONTEXT blocks; block number == citation number."""
     blocks = []
@@ -50,20 +69,21 @@ def build_prompt(question: str, chunks: list[tuple]) -> str:
     return f"CONTEXT:\n\n{context}\n\n---\n\nQUESTION: {question}\n\nANSWER:"
 
 
-async def answer_question(
+async def prepare_answer(
     session: AsyncSession,
     ollama: OllamaClient,
     question: str,
     top_k: int | None = None,
-) -> AnswerResult:
-    """Retrieve, gate by distance ceiling, then generate — or refuse.
+) -> PreparedAnswer:
+    """Retrieve and gate by distance ceiling; build the prompt if answerable.
 
     Retrieval goes through the Phase 1 pipeline (hybrid search + reranking,
     each independently feature-flagged in settings; both default off, so
     behavior is unchanged from Phase 0 until they are turned on).
 
-    The refusal is structural: if nothing clears MAX_DISTANCE, the LLM
-    is never called.
+    The DB session is committed (its pooled connection released) before this
+    returns, so callers can spend seconds in the LLM -- or stream for minutes --
+    without holding a connection.
     """
     settings = get_settings()
     top_k = top_k or settings.top_k
@@ -78,15 +98,49 @@ async def answer_question(
     ]
 
     if not relevant:
-        return AnswerResult(question=question, refused=True, chunks=retrieved)
+        return PreparedAnswer(question=question, refused=True, chunks=retrieved)
 
     active = system_prompt()
-    prompt = build_prompt(question, relevant)
-    answer = await ollama.chat(active.text, prompt)
+    return PreparedAnswer(
+        question=question,
+        refused=False,
+        chunks=relevant,
+        system=active.text,
+        prompt=build_prompt(question, relevant),
+        prompt_version=active.version,
+    )
+
+
+async def answer_question(
+    session: AsyncSession,
+    ollama: OllamaClient,
+    question: str,
+    top_k: int | None = None,
+) -> AnswerResult:
+    """Retrieve, gate by distance ceiling, then generate — or refuse.
+
+    The refusal is structural: if nothing clears MAX_DISTANCE, the LLM
+    is never called.
+    """
+    prepared = await prepare_answer(session, ollama, question, top_k)
+    if prepared.refused:
+        return AnswerResult(question=question, refused=True, chunks=prepared.chunks)
+
+    assert prepared.system is not None and prepared.prompt is not None
+    answer = await ollama.chat(prepared.system, prepared.prompt)
     return AnswerResult(
         question=question,
         refused=False,
         answer=answer,
-        chunks=relevant,
-        prompt_version=active.version,
+        chunks=prepared.chunks,
+        prompt_version=prepared.prompt_version,
     )
+
+
+def stream_answer(
+    ollama: OllamaClient, prepared: PreparedAnswer
+) -> AsyncGenerator[str, None]:
+    """Token stream for an answerable query. Refusals can never reach the model."""
+    if prepared.refused or prepared.system is None or prepared.prompt is None:
+        raise ValueError("cannot stream an answer for a refused query")
+    return ollama.chat_stream(prepared.system, prepared.prompt)

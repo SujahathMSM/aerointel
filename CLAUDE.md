@@ -7,10 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AeroIntel is an aviation-maintenance RAG service, built stage by stage with each
 stage proven by its own tests before the next starts. Phase 1 (hybrid
 retrieval + eval harness) is closed. Phase 2 is in progress: Redis rate limiting,
-JWT auth (scopes `query`/`ingest`) and idempotency keys on `/v1/ingest` are
-done; SSE streaming and the semantic cache are not started, nor is anything
-from Phase 3 on (event-driven ingestion, k8s deploy, observability). See the
-Status table and Roadmap in `README.md` for the full plan — don't reimplement
+JWT auth (scopes `query`/`ingest`), idempotency keys on `/v1/ingest` and SSE
+streaming (`/v1/query/stream`) are done; the semantic cache is not started, nor
+is anything from Phase 3 on (event-driven ingestion, k8s deploy, observability).
+See the Status table and Roadmap in `README.md` for the full plan — don't reimplement
 later-phase work prematurely.
 
 **Non-negotiable rule:** the model never answers from its own knowledge. It only
@@ -101,6 +101,16 @@ bound to a fingerprint of the request body; a failed or cancelled request
 releases its claim (token-checked, shielded from cancellation). Unlike rate
 limiting this **fails closed**: a request that sent a key gets 503 if Redis is
 down, because a key means "exactly once". Requests without a key are unaffected.
+
+Streaming: `POST /v1/query/stream` calls `services/generation.py:prepare_answer()`
+(retrieval + distance gate + prompt, DB session committed) *before* the response
+starts, then relays `OllamaClient.chat_stream()` as SSE events
+(`meta` -> `token`* -> `done`, or `error` in-band). `answer_question()` uses the
+same `prepare_answer()`, so the plain and streaming endpoints cannot drift. A
+refused query is `meta` + `done` and `stream_answer()` raises if asked to stream
+one -- the model is unreachable on refusal. Only *opening* the Ollama stream gets
+retry/breaker; mid-stream failures are not retried (it would duplicate text).
+Don't use the DB session inside the streaming generator.
 
 Tests: `tests/auth_helpers.py` configures auth env (and per-process Redis key
 prefixes, so runs never interfere) before `app` loads; `conftest.py` provides an

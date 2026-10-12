@@ -1,3 +1,7 @@
+import json
+from collections.abc import AsyncGenerator
+
+import anyio
 import httpx
 
 from app.core.config import Settings, get_settings
@@ -81,6 +85,80 @@ class OllamaClient:
                 retry_on=_CHAT_RETRYABLE,
             )
         )
+
+    async def chat_stream(self, system: str, user: str) -> AsyncGenerator[str, None]:
+        """Yield the answer as it is generated, a few tokens at a time.
+
+        Same prompt, model and options as `chat()`, and the pieces joined
+        together equal what `chat()` would return (leading/trailing whitespace
+        is trimmed the same way).
+
+        Resilience applies to *opening* the stream -- timeout, retry on
+        connection failure, circuit breaker -- exactly as for `chat()`. Once
+        tokens are flowing, a retry would restart the answer from the top and
+        show the caller duplicated text, so a failure mid-stream is raised
+        as-is. The per-read timeout (`ollama_timeout_seconds`) then acts as an
+        "Ollama went quiet" detector between chunks.
+        """
+
+        async def open_stream() -> httpx.Response:
+            request = self._client.build_request(
+                "POST",
+                "/api/chat",
+                json={
+                    "model": self.settings.llm_model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    "stream": True,
+                    "options": {"temperature": self.settings.temperature},
+                },
+            )
+            response = await self._client.send(request, stream=True)
+            if response.status_code != 200:
+                body = (await response.aread()).decode(errors="replace")
+                await response.aclose()
+                raise RuntimeError(
+                    f"Ollama chat failed ({response.status_code}): {body}"
+                )
+            return response
+
+        response = await self.breaker.call(
+            lambda: retry(
+                open_stream,
+                attempts=self.settings.ollama_max_retries,
+                retry_on=_CHAT_RETRYABLE,
+            )
+        )
+
+        started = False  # have we emitted any non-whitespace yet?
+        pending = ""  # whitespace held back until we know more text follows
+        try:
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                data = json.loads(line)
+                if "error" in data:
+                    raise RuntimeError(
+                        f"Ollama chat failed mid-stream: {data['error']}"
+                    )
+                buffered = pending + data.get("message", {}).get("content", "")
+                body = buffered.rstrip()
+                pending = buffered[len(body) :]
+                if not started:
+                    body = body.lstrip()
+                    pending = pending if body else ""
+                if body:
+                    started = True
+                    yield body
+                if data.get("done"):
+                    break
+        finally:
+            # If the caller went away we may be running inside a cancelled
+            # scope; shield the close so the connection is really released.
+            with anyio.CancelScope(shield=True):
+                await response.aclose()
 
     async def close(self) -> None:
         await self._client.aclose()

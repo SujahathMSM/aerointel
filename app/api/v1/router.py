@@ -1,4 +1,10 @@
+import asyncio
+import time
+from collections.abc import AsyncIterator
+from contextlib import aclosing
+
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import (
     IdempotencyKeyDep,
@@ -20,10 +26,16 @@ from app.core.idempotency import (
     run_once,
 )
 from app.core.logging import get_logger
+from app.core.sse import format_event
 from app.schemas.ingest import IngestRequest, IngestResponse
 from app.schemas.query import QueryRequest, QueryResponse, RetrievedChunk
 from app.schemas.search import SearchRequest, SearchResponse
-from app.services.generation import NO_CONTEXT_MESSAGE, answer_question
+from app.services.generation import (
+    NO_CONTEXT_MESSAGE,
+    answer_question,
+    prepare_answer,
+    stream_answer,
+)
 from app.services.ingestion import ingest_chunk
 from app.services.pipeline import retrieve
 
@@ -80,6 +92,85 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
         answer=result.answer,
         chunks=[_to_retrieved(c, d) for c, d in result.chunks],
         prompt_version=result.prompt_version,
+    )
+
+
+@router.post(
+    "/query/stream",
+    dependencies=[Depends(require_scope(SCOPE_QUERY))],
+    responses={200: {"content": {"text/event-stream": {}}}},
+)
+async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
+    """Same grounded answer as /v1/query, delivered as Server-Sent Events.
+
+    Retrieval and the refusal gate run *before* the response starts, so a
+    bad request, missing scope, rate limit or retrieval failure is an ordinary
+    HTTP error. After that the stream is:
+
+    - `meta`  -- question, refused, refusal_message, chunks (the sources),
+                 prompt_version. Always first.
+    - `token` -- `{"text": "..."}`, repeated; concatenate to build the answer.
+    - `done`  -- `{"refused": bool, "answer_chars": n}`. Always last on success.
+    - `error` -- `{"detail": "..."}` if generation fails after the stream began
+                 (the status line was already sent); no `done` follows.
+
+    A refusal is `meta` (refused=true) then `done`: the model is never called.
+    """
+    settings = get_settings()
+    prepared = await prepare_answer(session, ollama, body.question, body.top_k)
+
+    meta = QueryResponse(
+        question=prepared.question,
+        refused=prepared.refused,
+        refusal_message=(
+            NO_CONTEXT_MESSAGE.format(ceiling=settings.max_distance)
+            if prepared.refused
+            else None
+        ),
+        chunks=[_to_retrieved(c, d) for c, d in prepared.chunks],
+        prompt_version=prepared.prompt_version,
+    ).model_dump(exclude={"answer"})
+
+    async def events() -> AsyncIterator[str]:
+        started = time.monotonic()
+        chars = 0
+        outcome = "error"
+        try:
+            yield format_event("meta", meta)
+            if prepared.refused:
+                outcome = "refused"
+                yield format_event("done", {"refused": True, "answer_chars": 0})
+                return
+            async with aclosing(stream_answer(ollama, prepared)) as tokens:
+                async for piece in tokens:
+                    chars += len(piece)
+                    yield format_event("token", {"text": piece})
+            outcome = "completed"
+            yield format_event("done", {"refused": False, "answer_chars": chars})
+        except (asyncio.CancelledError, GeneratorExit):
+            outcome = "client_disconnected"
+            raise
+        except Exception:
+            # The 200 is already on the wire: report in-band, keep internals
+            # (hostnames, model errors) in the logs rather than the stream.
+            logger.exception("query stream failed")
+            yield format_event("error", {"detail": "Answer generation failed."})
+        finally:
+            logger.info(
+                "query stream finished",
+                outcome=outcome,
+                answer_chars=chars,
+                prompt_version=prepared.prompt_version,
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # tell nginx not to buffer the stream
+        },
     )
 
 
