@@ -1,6 +1,13 @@
 from fastapi import APIRouter, Depends
 
-from app.api.deps import OllamaDep, SessionDep, enforce_rate_limit
+from app.api.deps import (
+    OllamaDep,
+    SessionDep,
+    authenticate,
+    enforce_rate_limit,
+    require_scope,
+)
+from app.core.auth import SCOPE_INGEST, SCOPE_QUERY
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.schemas.ingest import IngestRequest, IngestResponse
@@ -10,11 +17,15 @@ from app.services.generation import NO_CONTEXT_MESSAGE, answer_question
 from app.services.ingestion import ingest_chunk
 from app.services.pipeline import retrieve
 
-# Every /v1 route spends a rate-limit token before it runs. Health checks
-# live on a separate router on purpose: a load balancer probing /health must
-# never be throttled into marking the service dead.
+# Every /v1 route first proves who is calling (401 if not), then spends a
+# rate-limit token from that caller's bucket; each route then checks its
+# scope. Order matters: authenticate runs first so the bucket is keyed by the
+# token's subject. Health checks live on a separate router on purpose: a load
+# balancer probing /health must never be throttled or asked for credentials.
 router = APIRouter(
-    prefix="/v1", tags=["v1"], dependencies=[Depends(enforce_rate_limit)]
+    prefix="/v1",
+    tags=["v1"],
+    dependencies=[Depends(authenticate), Depends(enforce_rate_limit)],
 )
 logger = get_logger(__name__)
 
@@ -28,7 +39,11 @@ def _to_retrieved(chunk, distance: float) -> RetrievedChunk:
     )
 
 
-@router.post("/query", response_model=QueryResponse)
+@router.post(
+    "/query",
+    response_model=QueryResponse,
+    dependencies=[Depends(require_scope(SCOPE_QUERY))],
+)
 async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
     """Grounded answer with [n] citations, or a structural refusal."""
     result = await answer_question(session, ollama, body.question, body.top_k)
@@ -58,7 +73,11 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
     )
 
 
-@router.post("/search", response_model=SearchResponse)
+@router.post(
+    "/search",
+    response_model=SearchResponse,
+    dependencies=[Depends(require_scope(SCOPE_QUERY))],
+)
 async def search(body: SearchRequest, session: SessionDep, ollama: OllamaDep):
     """Search only — no generation, no LLM call.
 
@@ -74,7 +93,11 @@ async def search(body: SearchRequest, session: SessionDep, ollama: OllamaDep):
     )
 
 
-@router.post("/ingest", response_model=IngestResponse)
+@router.post(
+    "/ingest",
+    response_model=IngestResponse,
+    dependencies=[Depends(require_scope(SCOPE_INGEST))],
+)
 async def ingest(body: IngestRequest, session: SessionDep, ollama: OllamaDep):
     """Embed and store one chunk."""
     settings = get_settings()

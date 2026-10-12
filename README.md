@@ -22,7 +22,7 @@ prompt.
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth, idempotency keys, SSE streaming, semantic response cache still to do | 🚧 in progress |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys, SSE streaming, semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion (page-level citations), HNSW index, pgBouncer, read replica, MinIO | not started |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
@@ -82,10 +82,11 @@ hanging the whole API.
 client
   │  HTTP
   ▼
-RequestIdMiddleware        stamps + logs a request ID on every request
+RequestIdMiddleware        stamps + logs a request ID on every request (plain ASGI)
   │
   ▼
-FastAPI router              /v1/query  /v1/search  /v1/ingest
+FastAPI router              /auth/token
+                             /v1/query  /v1/search  /v1/ingest  (token + scope + rate limit)
                              /health/live  /health/ready
   │
   ▼
@@ -189,11 +190,45 @@ Interactive API docs: http://localhost:8000/docs
 
 | Endpoint | What it does |
 |---|---|
+| `POST /auth/token` | Trade a client id + secret for a short-lived access token. Rate limited by IP. |
 | `POST /v1/query` | Full grounded pipeline: embed → search → distance gate → generate with citations, or a structural refusal. Refusal is a normal `200` (`"refused": true`) — a successful outcome of the contract, not an error. |
 | `POST /v1/search` | Semantic search only. No generation, no LLM call. |
-| `POST /v1/ingest` | Embed and store one chunk of text with metadata. |
+| `POST /v1/ingest` | Embed and store one chunk of text with metadata. Needs the `ingest` scope. |
 | `GET /health/live` | Is the process up? Checks nothing — always `200` if alive. |
 | `GET /health/ready` | Can we serve traffic? Verifies the database is reachable; `503` if not. |
+
+### Authentication (Phase 2)
+
+Every `/v1/*` call needs `Authorization: Bearer <token>`. Get a token by
+posting a client id and secret to `/auth/token`:
+
+```powershell
+'{"client_id":"admin","client_secret":"<secret>"}' | Set-Content t.json
+curl.exe -X POST http://localhost:8000/auth/token -H "Content-Type: application/json" -d "@t.json"
+# -> {"access_token":"eyJ...","token_type":"bearer","expires_in":3600,"scope":"ingest query"}
+```
+
+Clients and their scopes are defined in `AUTH_CLIENTS` (see `.env.example`).
+Two scopes: **`query`** (`/v1/query`, `/v1/search`) and **`ingest`**
+(`/v1/ingest`, which changes what every later answer is grounded in, so give it
+sparingly). A token can ask for a narrower scope than its client holds, never a
+wider one. No/invalid token → `401`; valid token without the scope → `403`.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `JWT_SECRET` | *(none)* | Signs tokens. Required, 32+ characters; the API refuses to start without it. |
+| `AUTH_CLIENTS` | *(empty)* | JSON map of `client_id` → `{secret, scopes}`. |
+| `AUTH_ENABLED` | `true` | `false` removes the token requirement (local experiments only). |
+| `JWT_TTL_SECONDS` | `3600` | Token lifetime. |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `aerointel` / `aerointel-api` | Checked on every token. |
+
+Design notes: signature, expiry, issuer, audience and subject are all
+*required* claims (a token without an expiry would live forever); the accepted
+algorithm is pinned to the configured one, so an `alg: none` or
+algorithm-swapped token is rejected; verification lives in one function, so
+Phase 7's Keycloak can replace the issuer without touching any route; and
+secrets are compared in constant time. The JWT secret is checked when the API
+starts, not when settings load, so `alembic` and the scripts don't need it.
 
 ### Rate limiting (Phase 2)
 
@@ -217,10 +252,11 @@ every worker/replica must share one budget; the refill-and-spend step is a
 single Lua script so concurrent requests can't race past the limit (a test
 fires 25 concurrent requests at a 5-token bucket and asserts exactly 5 get
 through); Redis calls have a 0.5 s timeout plus a circuit breaker, so a dead
-Redis costs a few fast failures, not a slow API. Clients are identified by IP
-for now — there is no auth yet, and trusting a client-sent header would let
-anyone reset their own limit. When JWT auth lands, the identity becomes the
-token's subject.
+Redis costs a few fast failures, not a slow API. Authenticated clients are
+identified by their token's subject, so a budget follows the caller across IP
+addresses; `/auth/token` itself (no token yet) is limited by IP. A client-sent
+header is never trusted for identity, since anyone could change it to reset
+their own limit.
 
 ### Try it
 

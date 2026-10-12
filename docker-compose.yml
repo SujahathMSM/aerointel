@@ -42,6 +42,10 @@ services:
       POSTGRES_PORT: 5432
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       REDIS_URL: redis://redis:6379/0
+      # No defaults: the API refuses to start without a JWT_SECRET (set both
+      # in .env; see .env.example).
+      JWT_SECRET: ${JWT_SECRET:-}
+      AUTH_CLIENTS: ${AUTH_CLIENTS:-}
 
     ports:
       - "8000:8000"

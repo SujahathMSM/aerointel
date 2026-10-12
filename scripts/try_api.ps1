@@ -4,6 +4,9 @@
 #   .\scripts\try_api.ps1 query  "what should I check if hydraulic pressure drops?"
 #   .\scripts\try_api.ps1 search "engine shaking while ascending"
 #   .\scripts\try_api.ps1 health
+#
+# /v1 calls need a token. Set these once per shell (a client from AUTH_CLIENTS in .env):
+#   $env:API_CLIENT_ID = "admin"; $env:API_CLIENT_SECRET = "<its secret>"
 
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Action,
@@ -12,11 +15,29 @@ param(
 
 $Base = "http://localhost:8000"
 
+function Get-Token() {
+    if (-not $env:API_CLIENT_ID -or -not $env:API_CLIENT_SECRET) {
+        Write-Host "Set `$env:API_CLIENT_ID and `$env:API_CLIENT_SECRET first (see the top of this script)." -ForegroundColor Red
+        exit 1
+    }
+    $file = New-TemporaryFile
+    @{ client_id = $env:API_CLIENT_ID; client_secret = $env:API_CLIENT_SECRET } | ConvertTo-Json | Set-Content -Path $file -Encoding UTF8
+    try {
+        $raw = curl.exe -s -X POST "$Base/auth/token" -H "Content-Type: application/json" -d "@$file"
+    } finally {
+        Remove-Item $file -Force
+    }
+    $token = ($raw | ConvertFrom-Json).access_token
+    if (-not $token) { Write-Host "Could not get a token: $raw" -ForegroundColor Red; exit 1 }
+    return $token
+}
+
 function Send-Json($method, $path, $body) {
+    $token = Get-Token
     $file = New-TemporaryFile
     $body | Set-Content -Path $file -Encoding UTF8
     try {
-        curl.exe -s -X $method "$Base$path" -H "Content-Type: application/json" -d "@$file"
+        curl.exe -s -X $method "$Base$path" -H "Content-Type: application/json" -H "Authorization: Bearer $token" -d "@$file"
     } finally {
         Remove-Item $file -Force
     }

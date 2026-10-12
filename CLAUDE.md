@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AeroIntel is an aviation-maintenance RAG service, built stage by stage with each
 stage proven by its own tests before the next starts. Phase 1 (hybrid
 retrieval + eval harness) is closed. Phase 2 is in progress: Redis rate limiting
-is done; JWT auth, idempotency keys, SSE streaming and the semantic cache are
-not started, nor is anything from Phase 3 on (event-driven ingestion, k8s
+and JWT auth (scopes `query`/`ingest`) are done; idempotency keys, SSE streaming
+and the semantic cache are not started, nor is anything from Phase 3 on (event-driven ingestion, k8s
 deploy, observability). See the Status table and
 Roadmap in `README.md` for the full plan — don't reimplement later-phase work
 prematurely.
@@ -84,7 +84,13 @@ holds typed `Settings` from env/`.env` with no defaults for secrets;
 `app/core/logging.py` provides structlog JSON logs + request-ID middleware.
 `app/core/rate_limit.py` is a Redis token bucket (atomic Lua script) applied to
 every `/v1` route via the router-level `enforce_rate_limit` dependency in
-`app/api/deps.py`; `/health/*` is deliberately outside it. A Redis outage is
+`app/api/deps.py`, which runs *after* `authenticate` so buckets are keyed by the
+token subject (`/auth/token` is limited by IP). `app/core/auth.py` holds JWT
+issue/verify (one `decode_access_token` function, so Keycloak can replace it in
+Phase 7) and `validate_auth_settings`, called from the API lifespan — not from
+`Settings` — so alembic/scripts need no JWT secret. Routes declare
+`require_scope(...)`. Tests get auth env + an authenticated `client` from
+`tests/auth_helpers.py` / `conftest.py`; use `anon_client` for no credentials; `/health/*` is deliberately outside it. A Redis outage is
 handled by a circuit breaker plus `RATE_LIMIT_FAIL_OPEN` (default: allow).
 
 **Prompts are versioned files**, not string literals: `app/prompts/<name>.<version>.txt`.

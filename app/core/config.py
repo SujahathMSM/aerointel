@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -55,6 +56,18 @@ class Settings(BaseSettings):
     # Redis down: True = let requests through (limiter is protection, not a
     # dependency), False = 503 everything until Redis is back.
     rate_limit_fail_open: bool = True
+
+    # Authentication (Phase 2): self-issued JWTs. The secret has no default --
+    # the API refuses to start without one while auth is on (checked at API
+    # startup, not here, so alembic and scripts don't need it).
+    auth_enabled: bool = True
+    jwt_secret: str | None = None
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
+    jwt_issuer: str = "aerointel"
+    jwt_audience: str = "aerointel-api"
+    jwt_ttl_seconds: int = 3600
+    # JSON: {"client-id": {"secret": "...", "scopes": ["query", "ingest"]}}
+    auth_clients: str = ""
 
     # Resilience
     ollama_timeout_seconds: float = 180.0

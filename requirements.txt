@@ -14,6 +14,9 @@ pgvector>=0.3.6
 # Rate limiting (Phase 2): shared token buckets across workers/replicas
 redis>=5.0.1
 
+# Authentication (Phase 2): signing and verifying JWTs
+PyJWT>=2.10
+
 # Config & logging
 pydantic-settings>=2.3
 structlog>=24.1

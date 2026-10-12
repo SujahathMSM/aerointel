@@ -2,8 +2,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.v1.router import router as v1_router
+from app.core.auth import validate_auth_settings
 from app.core.config import get_settings
 from app.core.logging import RequestIdMiddleware, configure_logging
 from app.core.rate_limit import create_rate_limiter
@@ -16,6 +18,7 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown: create and tear down shared resources."""
     configure_logging()
     settings = get_settings()
+    validate_auth_settings(settings)  # refuse to start misconfigured
     app.state.ollama = OllamaClient()
     # None = limiting switched off; the dependency then lets everything by.
     app.state.rate_limiter = (
@@ -36,6 +39,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(RequestIdMiddleware)
+    app.include_router(auth_router)
     app.include_router(v1_router)
     app.include_router(health_router)
     return app

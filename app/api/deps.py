@@ -1,8 +1,12 @@
 from typing import Annotated
 
+import structlog
 from fastapi import Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import ANONYMOUS, Principal, TokenError, decode_access_token
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.rate_limit import RateLimiter
 from app.db.base import get_session
@@ -19,13 +23,71 @@ def get_ollama(request: Request) -> OllamaClient:
 def client_identity(request: Request) -> str:
     """Who a request counts against for rate limiting.
 
-    For now: the client IP as seen by the server. There is no auth yet, so
-    this is the only identity the API can't be talked out of — trusting a
-    client-sent header (an API key nobody validates, X-Forwarded-For) would
-    let anyone reset their limit by changing the header. Once JWT auth
-    lands later in Phase 2, this becomes the token's subject.
+    Authenticated: the token's subject, so a client's budget follows it
+    across IP addresses and can't be dodged by rotating them (or shared by
+    everyone behind one NAT). Unauthenticated (only /auth/token, or auth
+    switched off): the client IP as seen by the server. Never a client-sent
+    header like X-Forwarded-For, which anyone could change to reset their
+    limit.
     """
+    principal: Principal | None = getattr(request.state, "principal", None)
+    if principal is not None and principal.authenticated:
+        return f"sub:{principal.subject}"
     return f"ip:{request.client.host if request.client else 'unknown'}"
+
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _unauthorized(error: str | None = None) -> HTTPException:
+    challenge = "Bearer" if error is None else f'Bearer error="{error}"'
+    return HTTPException(
+        status_code=401,
+        detail="Missing or invalid access token.",
+        headers={"WWW-Authenticate": challenge},
+    )
+
+
+async def authenticate(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> Principal:
+    """Resolve the caller from the bearer token, or reject with 401."""
+    settings = get_settings()
+    if not settings.auth_enabled:
+        request.state.principal = ANONYMOUS
+        return ANONYMOUS
+
+    if credentials is None:
+        raise _unauthorized()
+    try:
+        principal = decode_access_token(settings, credentials.credentials)
+    except TokenError as exc:
+        # The reason goes to the log; the client only learns "invalid".
+        logger.info("token rejected", reason=exc.reason)
+        raise _unauthorized("invalid_token") from exc
+
+    request.state.principal = principal
+    # Every log line for the rest of this request now names the caller.
+    structlog.contextvars.bind_contextvars(subject=principal.subject)
+    return principal
+
+
+PrincipalDep = Annotated[Principal, Depends(authenticate)]
+
+
+def require_scope(scope: str):
+    """Route dependency: the caller's token must carry `scope`, else 403."""
+
+    async def check(principal: PrincipalDep) -> Principal:
+        if not principal.has_scope(scope):
+            logger.info("scope denied", subject=principal.subject, required_scope=scope)
+            raise HTTPException(
+                status_code=403, detail=f"This action requires the '{scope}' scope."
+            )
+        return principal
+
+    return check
 
 
 async def enforce_rate_limit(request: Request, response: Response) -> None:
