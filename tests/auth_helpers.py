@@ -26,6 +26,8 @@ os.environ["AUTH_CLIENTS"] = json.dumps(TEST_CLIENTS)
 # (tests/test_rate_limit.py builds its own small limiters to test limiting.)
 os.environ["RATE_LIMIT_KEY_PREFIX"] = f"test-app:{uuid.uuid4().hex}"
 os.environ["RATE_LIMIT_CAPACITY"] = "1000"
+# Same isolation for idempotency keys (tests reuse key strings like "k1").
+os.environ["IDEMPOTENCY_KEY_PREFIX"] = f"test-idem:{uuid.uuid4().hex}"
 
 from app.core.auth import create_access_token
 from app.core.config import get_settings

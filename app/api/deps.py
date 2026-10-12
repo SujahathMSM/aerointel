@@ -1,12 +1,14 @@
+import re
 from typing import Annotated
 
 import structlog
-from fastapi import Depends, HTTPException, Request, Response
+from fastapi import Depends, Header, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import ANONYMOUS, Principal, TokenError, decode_access_token
 from app.core.config import get_settings
+from app.core.idempotency import IdempotencyStore
 from app.core.logging import get_logger
 from app.core.rate_limit import RateLimiter
 from app.db.base import get_session
@@ -123,5 +125,30 @@ async def enforce_rate_limit(request: Request, response: Response) -> None:
     )
 
 
+# Letters, digits and . _ : - only, 1-128 chars: safe to log and to store.
+_IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+
+
+def idempotency_key(
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> str | None:
+    """The request's `Idempotency-Key` header, validated, or None if absent."""
+    if idempotency_key is None:
+        return None
+    if not _IDEMPOTENCY_KEY.match(idempotency_key):
+        raise HTTPException(
+            status_code=400,
+            detail="Idempotency-Key must be 1-128 characters from A-Z a-z 0-9 . _ : -",
+        )
+    return idempotency_key
+
+
+def get_idempotency_store(request: Request) -> IdempotencyStore | None:
+    """The shared store, or None when IDEMPOTENCY_ENABLED=false."""
+    return getattr(request.app.state, "idempotency", None)
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+IdempotencyKeyDep = Annotated[str | None, Depends(idempotency_key)]
+IdempotencyStoreDep = Annotated[IdempotencyStore | None, Depends(get_idempotency_store)]
 OllamaDep = Annotated[OllamaClient, Depends(get_ollama)]

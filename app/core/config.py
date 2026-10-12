@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     # JSON: {"client-id": {"secret": "...", "scopes": ["query", "ingest"]}}
     auth_clients: str = ""
 
+    # Idempotency keys (Phase 2): an `Idempotency-Key` header on POST /v1/ingest
+    # makes retries safe. Finished responses are remembered for the TTL; a
+    # request still running is guarded by the (shorter) lock, which must
+    # outlast the slowest legitimate ingest (embed timeout x retries).
+    idempotency_enabled: bool = True
+    idempotency_ttl_seconds: int = 86400
+    idempotency_lock_seconds: int = 150
+    idempotency_key_prefix: str = "idempotency"
+
     # Resilience
     ollama_timeout_seconds: float = 180.0
     # Embedding one short string should take well under a second; waiting

@@ -22,7 +22,7 @@ prompt.
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys, SSE streaming, semantic response cache still to do | 🚧 in progress |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming, semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion (page-level citations), HNSW index, pgBouncer, read replica, MinIO | not started |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
@@ -229,6 +229,48 @@ algorithm-swapped token is rejected; verification lives in one function, so
 Phase 7's Keycloak can replace the issuer without touching any route; and
 secrets are compared in constant time. The JWT secret is checked when the API
 starts, not when settings load, so `alembic` and the scripts don't need it.
+
+### Idempotency keys (Phase 2)
+
+`POST /v1/ingest` creates a row. If a connection drops after the server stored
+the chunk but before the client saw the answer, a plain retry stores it twice —
+and a duplicated chunk quietly outranks its neighbours in retrieval. Send an
+`Idempotency-Key` header (any unique string, 1–128 characters of `A-Z a-z 0-9 . _ : -`,
+e.g. a UUID) and retries become safe:
+
+```powershell
+$key = [guid]::NewGuid().ToString()
+curl.exe -X POST http://localhost:8000/v1/ingest -H "Authorization: Bearer $token" `
+  -H "Idempotency-Key: $key" -H "Content-Type: application/json" -d "@chunk.json"
+# run it again with the same $key: same response, plus "Idempotent-Replay: true",
+# and nothing is stored a second time
+```
+
+| Situation | Result |
+|---|---|
+| First request with a key | Runs normally; the response is remembered for 24 h. |
+| Same key + same body again | The remembered response, header `Idempotent-Replay: true`. Nothing is embedded or stored. |
+| Same key, **different** body | `422` — a reused key is a client bug, so it is rejected rather than silently answered. |
+| Same key while the first is still running | `409` with `Retry-After: 1`. |
+| First attempt failed or the client hung up | The key is released; the retry runs normally. |
+| Redis unreachable, key sent | `503` and nothing is stored. A key means "exactly once", so it refuses rather than risk a duplicate. (Rate limiting does the opposite and fails open.) |
+| No key sent | Unchanged from before. |
+
+Keys are private to the caller that made them, and are bound to a fingerprint
+of the request body (key order in the JSON doesn't matter).
+
+| Setting | Default | What it does |
+|---|---|---|
+| `IDEMPOTENCY_ENABLED` | `true` | `false` ignores the header entirely. |
+| `IDEMPOTENCY_TTL_SECONDS` | `86400` | How long finished responses are remembered. |
+| `IDEMPOTENCY_LOCK_SECONDS` | `150` | How long a running request holds its key; a crashed server can't block a key longer than this. Keep it above the slowest legitimate ingest (embed timeout × retries). |
+
+Design notes: the claim is a single Redis `SET NX`, so of any number of
+simultaneous requests with one key exactly one runs (a test fires 12 at once and
+asserts one insert). Each claim carries a random token and is released by a Lua
+script that checks it, so a slow request can't delete the claim of whoever took
+the key after it. The release is shielded from cancellation, because a client
+hanging up cancels the request mid-work.
 
 ### Rate limiting (Phase 2)
 
