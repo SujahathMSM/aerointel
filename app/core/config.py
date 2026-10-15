@@ -78,6 +78,21 @@ class Settings(BaseSettings):
     idempotency_lock_seconds: int = 150
     idempotency_key_prefix: str = "idempotency"
 
+    # Document ingestion (PDF upload -> text -> chunks -> embeddings).
+    # Largest upload POST /v1/documents accepts, in megabytes.
+    max_upload_mb: int = 300
+    # Target chunk size in characters (about 300 tokens) and how much of the
+    # previous chunk is repeated at the start of the next, so an answer that
+    # straddles a boundary still lands whole in one chunk.
+    chunk_max_chars: int = 1200
+    chunk_overlap_chars: int = 150
+    # Chunks embedded per Ollama call.
+    embed_batch_size: int = 8
+    # OCR for pages with no text layer (scanned PDFs). Off by default: it needs
+    # the tesseract program and PyMuPDF (see requirements-ocr.txt).
+    ocr_enabled: bool = False
+    ocr_language: str = "eng"
+
     # Resilience
     ollama_timeout_seconds: float = 180.0
     # Embedding one short string should take well under a second; waiting

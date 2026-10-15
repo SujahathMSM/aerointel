@@ -8,8 +8,9 @@ AeroIntel is an aviation-maintenance RAG service, built stage by stage with each
 stage proven by its own tests before the next starts. Phase 1 (hybrid
 retrieval + eval harness) is closed. Phase 2 is in progress: Redis rate limiting,
 JWT auth (scopes `query`/`ingest`), idempotency keys on `/v1/ingest` and SSE
-streaming (`/v1/query/stream`) are done; the semantic cache is not started, nor
-is anything from Phase 3 on (event-driven ingestion, k8s deploy, observability).
+streaming (`/v1/query/stream`) are done; the semantic cache is not started. PDF
+ingestion with page citations (a Phase 4 item) was pulled forward and exists. Nothing
+else from Phase 3 on is built (event-driven ingestion, k8s deploy, observability).
 See the Status table and Roadmap in `README.md` for the full plan — don't reimplement
 later-phase work prematurely.
 
@@ -112,6 +113,17 @@ one -- the model is unreachable on refusal. Only *opening* the Ollama stream get
 retry/breaker; mid-stream failures are not retried (it would duplicate text).
 Don't use the DB session inside the streaming generator.
 
+Documents: `POST /v1/documents` and `scripts/ingest_pdfs.py` both call
+`services/documents.py:ingest_pdf()`: SHA-256 dedup lookup (then commit, to release
+the pooled connection), `services/pdf_text.py` (pypdf text, repeated header/footer
+removal, printed page labels, sentence-bound chunks that never cross a page), optional
+`services/ocr.py` for blank pages, batched embedding, then one transaction writing the
+`documents` row and its chunks (`document_id`, `chunk_index`, `page`, `page_label`).
+Never hold a DB connection across reading/embedding. The new tables/columns live in
+migration 0004, which is idempotent on purpose (the integration tests' `create_all`
+can create `documents` first). Chunks from plain `/v1/ingest` have NULL document
+fields and still work.
+
 Tests: `tests/auth_helpers.py` configures auth env (and per-process Redis key
 prefixes, so runs never interfere) before `app` loads; `conftest.py` provides an
 authenticated `client` (admin: query + ingest) and `anon_client` (no credentials).
@@ -129,11 +141,13 @@ models are never comparable — a model swap goes through
 
 ## Data
 
-The database holds only 6 hand-written synthetic chunks
+The database holds 6 hand-written synthetic chunks
 (`scripts/load_sample_data.py`) — explicitly placeholder content, not real
-aircraft manual text. Real PDF ingestion with page-level citations is Phase 4,
-not yet built. Don't treat retrieval-quality numbers as meaningful beyond this
-toy corpus.
+aircraft manual text — plus whatever PDFs have been ingested (PDF ingestion with
+page citations exists; collections, HNSW and background ingestion do not yet).
+Don't treat retrieval-quality numbers as meaningful beyond the toy corpus until a
+golden question set exists for real documents. `data/` (downloaded PDFs) is gitignored;
+`scripts/fetch_sample_docs.ps1` fetches free FAA manuals (public domain).
 
 ## Conventions
 

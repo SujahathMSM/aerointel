@@ -1,0 +1,5 @@
+# Optional: OCR for scanned PDFs (OCR_ENABLED=true).
+# Also needs the tesseract program: https://github.com/UB-Mannheim/tesseract/wiki
+# on Windows, `apt install tesseract-ocr` on Debian/Ubuntu. The Docker image
+# installs both when built with INSTALL_OCR=true.
+pymupdf>=1.24.3

@@ -20,3 +20,7 @@ PyJWT>=2.10
 # Config & logging
 pydantic-settings>=2.3
 structlog>=24.1
+
+# Document ingestion (Phase 4): PDF text extraction and file uploads
+pypdf>=5.0
+python-multipart>=0.0.9

@@ -32,7 +32,10 @@ services:
       retries: 10
 
   api:
-    build: .
+    build:
+      context: .
+      args:
+        INSTALL_OCR: ${INSTALL_OCR:-false}
 
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -46,6 +49,8 @@ services:
       # in .env; see .env.example).
       JWT_SECRET: ${JWT_SECRET:-}
       AUTH_CLIENTS: ${AUTH_CLIENTS:-}
+      # Read text from scanned PDF pages (needs the image built with INSTALL_OCR=true).
+      OCR_ENABLED: ${OCR_ENABLED:-false}
 
     ports:
       - "8000:8000"

@@ -58,12 +58,21 @@ class PreparedAnswer:
     prompt_version: str | None = None
 
 
+def _where(chunk) -> str:
+    """', page 3-3 (PDF page 120)' for chunks cut from a PDF; '' otherwise."""
+    page = getattr(chunk, "page", None)
+    if page is None:
+        return ""
+    label = getattr(chunk, "page_label", None)
+    return f", page {label} (PDF page {page})" if label else f", PDF page {page}"
+
+
 def build_prompt(question: str, chunks: list[tuple]) -> str:
     """Numbered CONTEXT blocks; block number == citation number."""
     blocks = []
     for rank, (chunk, _distance) in enumerate(chunks, start=1):
         source = chunk.metadata_.get("source", "unknown")
-        blocks.append(f"[{rank}] Source: {source}\n{chunk.content}")
+        blocks.append(f"[{rank}] Source: {source}{_where(chunk)}\n{chunk.content}")
 
     context = "\n\n---\n\n".join(blocks)
     return f"CONTEXT:\n\n{context}\n\n---\n\nQUESTION: {question}\n\nANSWER:"

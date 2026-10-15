@@ -2,8 +2,17 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import aclosing
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import (
@@ -27,9 +36,11 @@ from app.core.idempotency import (
 )
 from app.core.logging import get_logger
 from app.core.sse import format_event
+from app.schemas.documents import DocumentResponse
 from app.schemas.ingest import IngestRequest, IngestResponse
 from app.schemas.query import QueryRequest, QueryResponse, RetrievedChunk
 from app.schemas.search import SearchRequest, SearchResponse
+from app.services.documents import ingest_pdf
 from app.services.generation import (
     NO_CONTEXT_MESSAGE,
     answer_question,
@@ -37,6 +48,7 @@ from app.services.generation import (
     stream_answer,
 )
 from app.services.ingestion import ingest_chunk
+from app.services.pdf_text import PdfError
 from app.services.pipeline import retrieve
 
 # Every /v1 route first proves who is calling (401 if not), then spends a
@@ -58,6 +70,9 @@ def _to_retrieved(chunk, distance: float) -> RetrievedChunk:
         distance=distance,
         source=chunk.metadata_.get("source"),
         content=chunk.content,
+        document_id=getattr(chunk, "document_id", None),
+        page=getattr(chunk, "page", None),
+        page_label=getattr(chunk, "page_label", None),
     )
 
 
@@ -192,6 +207,50 @@ async def search(body: SearchRequest, session: SessionDep, ollama: OllamaDep):
         query=body.query,
         results=[_to_retrieved(chunk, distance) for chunk, distance in results],
     )
+
+
+@router.post(
+    "/documents",
+    response_model=DocumentResponse,
+    dependencies=[Depends(require_scope(SCOPE_INGEST))],
+)
+async def upload_document(
+    file: Annotated[UploadFile, File(description="The PDF to ingest.")],
+    session: SessionDep,
+    ollama: OllamaDep,
+    title: Annotated[str | None, Form(max_length=300)] = None,
+):
+    """Upload a PDF: it is read, cut into page-bound chunks, embedded and stored.
+
+    Answers cite the document and page (both the PDF page and the number
+    printed on it). Uploading the same file again changes nothing and returns
+    the existing document with `duplicate: true`.
+
+    The request stays open until embedding finishes, which can take minutes
+    for a long manual; for those use `python scripts/ingest_pdfs.py` until
+    background ingestion arrives.
+    """
+    limit = get_settings().max_upload_mb * 1024 * 1024
+    data = bytearray()
+    while piece := await file.read(1024 * 1024):
+        data += piece
+        if len(data) > limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File is larger than the {get_settings().max_upload_mb} MB limit.",
+            )
+    if not data:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="Only PDF files are supported.")
+
+    try:
+        result = await ingest_pdf(
+            session, ollama, bytes(data), file.filename or "document.pdf", title
+        )
+    except PdfError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return DocumentResponse(**vars(result))
 
 
 @router.post(

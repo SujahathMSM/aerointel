@@ -11,6 +11,11 @@ class RetrievedChunk(BaseModel):
     distance: float
     source: str | None = None
     content: str
+    # Where the passage sits when it came from an uploaded PDF (else None):
+    # the document, the PDF page number, and the page number printed on the page.
+    document_id: int | None = None
+    page: int | None = None
+    page_label: str | None = None
 
 
 class QueryResponse(BaseModel):

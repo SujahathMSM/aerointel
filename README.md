@@ -24,7 +24,7 @@ prompt.
 | Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
 | Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
-| Phase 4 — data layer at scale | Real PDF ingestion (page-level citations), HNSW index, pgBouncer, read replica, MinIO | not started |
+| Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback) · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
 | Phase 6 — observability | Prometheus, Grafana, OpenTelemetry traces, Jaeger, k6 load tests, SLO/error-budget dashboard | not started |
 | Phase 7 — security & hardening | Keycloak OIDC, TLS via mkcert, SOPS-encrypted secrets, audit log, OWASP Top-10 pass | not started |
@@ -44,9 +44,11 @@ prompt.
 The database currently holds **6 hand-written synthetic chunks** (hydraulics,
 pressurization, brakes, engine) — see `scripts/load_sample_data.py`. This is
 placeholder content written for this project, explicitly **not** real aircraft
-manual text and **not** airworthiness information. Real PDF ingestion is Phase 4
-work. Everything through Phase 1 is built and measured against this small
-synthetic set.
+manual text and **not** airworthiness information. Everything through Phase 1
+is built and measured against this small synthetic set. Real documents can now
+be loaded (see [Document ingestion](#document-ingestion-phase-4)); until a real
+question set exists for them, treat the retrieval numbers as belonging to the
+synthetic set only.
 
 ## How a request flows (current: Phase 0 + Stage 2)
 
@@ -133,20 +135,24 @@ app/
   api/
     deps.py              FastAPI dependencies (DB session, Ollama client, rate limit)
     health.py             /health/live, /health/ready
-    v1/router.py           /v1/query, /v1/search, /v1/ingest
+    v1/router.py           /v1/query, /v1/query/stream, /v1/search, /v1/ingest, /v1/documents
   db/
     base.py               async engine + session factory
-    models.py              DocumentChunk (pgvector column, JSONB metadata)
+    models.py              Document, DocumentChunk (pgvector column, JSONB metadata, page)
   llm/
     ollama.py              OllamaClient: embed() + chat(), resilience-wrapped
   schemas/                 pydantic request/response contracts
   services/
     retrieval.py            search_chunks() — embed + pgvector search
     generation.py            answer_question() — distance gate + grounded generation
-    ingestion.py             ingest_chunk() — embed + store
+    ingestion.py             ingest_chunk() — embed + store one text chunk
+    documents.py             ingest_pdf() — PDF -> page-bound chunks -> embed -> store
+    pdf_text.py               PDF text extraction, header/footer cleanup, chunking
+    ocr.py                    optional OCR for scanned pages (tesseract + PyMuPDF)
 
 alembic/                  versioned schema migrations
-scripts/                  original stage scripts (ask.py, verify_*.py, ...) — still work
+scripts/                  original stage scripts (ask.py, verify_*.py, ...) — still work;
+                          ingest_pdfs.py and fetch_sample_docs.ps1 for real documents
 tests/                    pytest suite (unit, integration, local-Ollama)
 sql/                      original raw-SQL schema (pre-Alembic reference)
 docs/PHASE_0.md           file-by-file walkthrough of Phase 0
@@ -193,6 +199,7 @@ Interactive API docs: http://localhost:8000/docs
 | `POST /auth/token` | Trade a client id + secret for a short-lived access token. Rate limited by IP. |
 | `POST /v1/query` | Full grounded pipeline: embed → search → distance gate → generate with citations, or a structural refusal. Refusal is a normal `200` (`"refused": true`) — a successful outcome of the contract, not an error. |
 | `POST /v1/query/stream` | Same pipeline as `/v1/query`, but the answer arrives as Server-Sent Events, token by token. See [Streaming answers](#streaming-answers-phase-2). |
+| `POST /v1/documents` | Upload a PDF (multipart, `ingest` scope). It is read, cut into page-bound chunks, embedded and stored; answers then cite document and page. See [Document ingestion](#document-ingestion-phase-4). |
 | `POST /v1/search` | Semantic search only. No generation, no LLM call. |
 | `POST /v1/ingest` | Embed and store one chunk of text with metadata. Needs the `ingest` scope. |
 | `GET /health/live` | Is the process up? Checks nothing — always `200` if alive. |
@@ -304,6 +311,55 @@ Opening the stream to Ollama is protected by the same timeout / retry / circuit
 breaker as `/v1/query`, but a failure *mid-stream* is not retried (a retry would
 restart the answer and duplicate text). The per-chunk read timeout
 (`OLLAMA_TIMEOUT_SECONDS`) ends a stream whose model goes silent.
+
+### Document ingestion (Phase 4)
+
+Upload a PDF and ask questions about it; answers cite the document and the page.
+
+```powershell
+alembic upgrade head                                   # once: adds the documents table
+.\scripts\fetch_sample_docs.ps1                        # free FAA manual (AC 43.13-1B, 756 pages)
+python scripts\ingest_pdfs.py data\aviation --dry-run   # check how it reads, stores nothing
+python scripts\ingest_pdfs.py data\aviation             # read, chunk, embed, store
+```
+
+Or over HTTP, for smaller files (the request stays open until embedding is done):
+
+```powershell
+curl.exe -X POST http://localhost:8000/v1/documents -H "Authorization: Bearer $token" -F "file=@data\aviation\AC_43.13-1B_CHG_1.pdf" -F "title=AC 43.13-1B"
+```
+
+What happens to a file:
+
+1. **Deduplication.** The SHA-256 of the file's bytes is looked up first. A file
+   ingested before is skipped (`duplicate: true`), whatever it is now called.
+2. **Reading.** The PDF's own text layer is read page by page. Running headers
+   and footers (lines that repeat on a quarter or more of the pages, ignoring
+   changing digits) are removed so they do not pollute every chunk. The page
+   number printed on the page ("3-3", "xii") is read from it when present.
+3. **OCR (optional).** Pages with no text layer are read with tesseract if
+   `OCR_ENABLED=true`. Without OCR, a fully scanned PDF is rejected with a clear
+   message instead of being stored empty.
+4. **Chunking.** Each page is cut into chunks of about `CHUNK_MAX_CHARS`
+   (1200) characters ending on sentence boundaries, with `CHUNK_OVERLAP_CHARS`
+   (150) repeated at the start of the next one. A chunk never crosses a page, so
+   every citation names exactly one page.
+5. **Storing.** All chunks are embedded in batches, then the document and its
+   chunks are written in one transaction: a file is fully ingested or not at all.
+   The database connection is released before the slow reading and embedding.
+
+Each stored chunk records its document, its position, the PDF page and the
+printed page. `/v1/query` and `/v1/search` return them (`document_id`, `page`,
+`page_label`), and the model is told "Source: AC 43.13-1B, page 3-3 (PDF page
+121)" so it can cite precisely.
+
+OCR needs the tesseract program and PyMuPDF: `pip install -r requirements-ocr.txt`
+plus tesseract on your PATH (on Windows: the UB-Mannheim installer). In Docker,
+build with `INSTALL_OCR=true` and run with `OCR_ENABLED=true`.
+
+Not yet built (see the roadmap): collections to keep topics apart, a vector index
+for very large corpora, and background ingestion with progress. Until then, load
+long manuals with the script rather than over HTTP.
 
 ### Rate limiting (Phase 2)
 
@@ -437,6 +493,8 @@ against a real pgvector service container on every push.
 | `tests/test_search_synthetic.py` | pgvector ranks by meaning using orthogonal synthetic vectors — no real embedding model needed to prove the math | Postgres only (CI) |
 | `tests/test_rag_local.py` | Full grounding contract with real Ollama: matched question → cited answer, unmatched question → refusal | Ollama + Postgres |
 | `tests/test_streaming.py` | Ollama stream parsing (ordering, whitespace trimming equals `chat()`, error lines, retry/circuit rules, connection closed on early stop); SSE format; the `/v1/query/stream` event sequence, refusal never reaching the model, in-band errors that don't leak, auth/scope/validation, and client disconnect ending generation (ASGI 2.3 and 2.4 styles) | Redis for the endpoint tests |
+| `tests/test_pdf_text.py` | Page-number reading, header/footer removal, hyphenation, sentence-bound chunking with overlap, chunks never crossing pages, unreadable/encrypted/scanned PDFs, and real OCR on a scanned page | nothing (OCR test needs tesseract + PyMuPDF, else skipped) |
+| `tests/test_documents.py` | PDF ingestion service (dedup, connection released before embedding, batches, concurrent-upload race, nothing half-stored), the upload endpoint (type, size, scope), page info in search results and prompts, and against real Postgres: duplicate skip, page provenance, cascade delete | Redis (endpoint), Postgres (integration) |
 | `tests/test_eval_metrics.py` | Eval metric math (recall@k, MRR, aggregation) + golden-set well-formedness | nothing |
 
 ## Retrieval evals (the scoreboard)
