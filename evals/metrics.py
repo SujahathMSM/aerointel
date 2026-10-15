@@ -38,3 +38,21 @@ def aggregate(per_item: list[dict], k_values: tuple[int, ...]) -> dict:
         summary[key] = sum(row[key] for row in per_item) / len(per_item)
     summary["mrr"] = sum(row["rr"] for row in per_item) / len(per_item)
     return summary
+
+
+def hit_recall_at_k(hits: list[bool], k: int) -> float:
+    """1.0 if any of the first k results is a hit, else 0.0.
+
+    Same idea as `recall_at_k`, for evals where "right" is a property of the
+    result (it is on the expected page) rather than one known chunk id: chunk
+    ids change every time a document is re-ingested, pages do not.
+    """
+    return 1.0 if any(hits[:k]) else 0.0
+
+
+def hit_reciprocal_rank(hits: list[bool]) -> float:
+    """1/rank of the first hit (1-based); 0.0 if there is none."""
+    for rank, is_hit in enumerate(hits, start=1):
+        if is_hit:
+            return 1.0 / rank
+    return 0.0

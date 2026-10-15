@@ -24,7 +24,7 @@ prompt.
 | Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
 | Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
-| Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback) · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
+| Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback) · page-scored eval on a 24-question FAA golden set ✅ · optional "read on" context (next chunk after each hit) ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
 | Phase 6 — observability | Prometheus, Grafana, OpenTelemetry traces, Jaeger, k6 load tests, SLO/error-budget dashboard | not started |
 | Phase 7 — security & hardening | Keycloak OIDC, TLS via mkcert, SOPS-encrypted secrets, audit log, OWASP Top-10 pass | not started |
@@ -149,7 +149,10 @@ app/
     documents.py             ingest_pdf() — PDF -> page-bound chunks -> embed -> store
     pdf_text.py               PDF text extraction, header/footer cleanup, chunking
     ocr.py                    optional OCR for scanned pages (tesseract + PyMuPDF)
+    context.py                 optional: add the chunk(s) after each hit to the prompt
 
+evals/                    scoreboards: run_eval (sample corpus, by chunk id) and
+                          doc_eval (real documents, scored by page; golden_faa.json)
 alembic/                  versioned schema migrations
 scripts/                  original stage scripts (ask.py, verify_*.py, ...) — still work;
                           ingest_pdfs.py and fetch_sample_docs.ps1 for real documents
@@ -361,6 +364,26 @@ Not yet built (see the roadmap): collections to keep topics apart, a vector inde
 for very large corpora, and background ingestion with progress. Until then, load
 long manuals with the script rather than over HTTP.
 
+#### Reading on: context widening (off by default)
+
+A chunk ends on a sentence, often in the middle of a section, so the answer to a
+question can continue in the chunk after the one that matched. (Example from the
+FAA manual: the hit for "how do I inspect control cables?" ends at "c." and the
+next chunk holds the cloth-wipe and magnifying-glass steps.) With
+`CONTEXT_NEIGHBORS=1` each retrieved chunk that passes the distance gate is
+followed in the prompt by the chunk after it from the same document.
+
+- The distance gate runs first, on the real hits only, so widening can never turn
+  a refusal into an answer. A neighbour carries its hit's distance.
+- `CONTEXT_MAX_CHUNKS` (default 8) caps the prompt, hits included. The first
+  following chunk of every hit is added before the second of any.
+- A longer prompt needs a longer context window. Ollama silently drops what does
+  not fit, so set `LLM_NUM_CTX=8192` when you turn this on; a prompt that may not
+  fit is logged as `prompt may not fit the model context window`.
+- Measure before enabling: `python -m evals.doc_eval --neighbors 1` reports
+  `context_hit` (is a right page among what the model would read?) and the
+  prompt size.
+
 ### Rate limiting (Phase 2)
 
 Every `/v1/*` request spends one token from its client's bucket in Redis.
@@ -495,6 +518,8 @@ against a real pgvector service container on every push.
 | `tests/test_streaming.py` | Ollama stream parsing (ordering, whitespace trimming equals `chat()`, error lines, retry/circuit rules, connection closed on early stop); SSE format; the `/v1/query/stream` event sequence, refusal never reaching the model, in-band errors that don't leak, auth/scope/validation, and client disconnect ending generation (ASGI 2.3 and 2.4 styles) | Redis for the endpoint tests |
 | `tests/test_pdf_text.py` | Page-number reading, header/footer removal, hyphenation, sentence-bound chunking with overlap, chunks never crossing pages, unreadable/encrypted/scanned PDFs, and real OCR on a scanned page | nothing (OCR test needs tesseract + PyMuPDF, else skipped) |
 | `tests/test_documents.py` | PDF ingestion service (dedup, connection released before embedding, batches, concurrent-upload race, nothing half-stored), the upload endpoint (type, size, scope), page info in search results and prompts, and against real Postgres: duplicate skip, page provenance, cascade delete | Redis (endpoint), Postgres (integration) |
+| `tests/test_context.py` | Which following chunks are planned (budget spread over the hits, no duplicates), widening after the distance gate and before the session is released, refusals untouched, the context-window warning, `num_ctx` sent only when set, and against real Postgres: neighbour order, document boundaries, last chunk | Postgres (integration) |
+| `tests/test_doc_eval.py` | Page-based scoring (hit, rank, reaches-the-prompt, context hit), off-topic refusal, the `MAX_DISTANCE` sweep and suggested ceiling, and the golden file's well-formedness | nothing |
 | `tests/test_eval_metrics.py` | Eval metric math (recall@k, MRR, aggregation) + golden-set well-formedness | nothing |
 
 ## Retrieval evals (the scoreboard)
@@ -530,6 +555,31 @@ reranker reading the full text can. That is step 3. Hybrid stays in the
 codebase behind `HYBRID_ENABLED` because it will matter once the corpus
 grows to contain exact-term content (error codes, part numbers) that
 embeddings miss.
+
+### Real documents: scored by page
+
+`run_eval` scores the 6 synthetic chunks by chunk id. A real manual is
+re-ingested into new ids, so `evals/doc_eval.py` scores by **page**: each question
+in `evals/golden_faa.json` lists the PDF page(s) that answer it (checked against
+the text of AC 43.13-1B), and a retrieved chunk is a hit when it comes from one of
+them. 24 questions plus 3 off-topic ones that must be refused.
+
+```powershell
+python -m evals.doc_eval                          # vector baseline
+python -m evals.doc_eval --retriever hybrid       # + keyword search
+python -m evals.doc_eval --neighbors 1            # + the chunk after each hit
+python -m evals.doc_eval --save evals\results\baseline.json
+```
+
+It reports `recall@k` and MRR, **reaches prompt** (does a right-page chunk get past
+`MAX_DISTANCE`, i.e. is the question answered rather than refused), **context hit**
+(with `--neighbors`), whether each off-topic question is refused, and a
+`MAX_DISTANCE` sweep with a suggested value: the middle of the range that lets the
+most right pages through while still refusing everything off-topic. Run it before
+and after every retrieval change and keep the saved files.
+
+Needs Postgres with the manual ingested and Ollama running. CI covers the scoring
+logic and the golden file (`tests/test_doc_eval.py`), not the live numbers.
 
 ## Stop / reset
 

@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_candidates: int = 20
 
+    # Context widening: when a retrieved chunk is cut from a PDF, also give the
+    # model the next `context_neighbors` chunks of the same document (a hit often
+    # stops mid-section; the answer continues in the chunk after it). 0 = off.
+    # At most `context_max_chunks` chunks go into one prompt, hits included.
+    context_neighbors: int = 0
+    context_max_chunks: int = 8
+    # Context window (tokens) the model is asked to use. None = Ollama's default.
+    # Anything past the window is silently dropped by Ollama, so a prompt that
+    # may not fit is logged. Raise this (e.g. 8192) before raising the two above.
+    llm_num_ctx: int | None = None
+
     # Prompt registry (Phase 1): prompts live as versioned files under
     # app/prompts/. None = use the newest version on disk; pin a version
     # ("v1") to freeze behavior while a newer one is being evaluated.

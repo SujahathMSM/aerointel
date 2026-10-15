@@ -48,6 +48,7 @@ mypy app                   # note: mypy excludes alembic/versions, scripts, test
 # Retrieval eval harness (needs Postgres + sample data; add --retriever/--reranker/--faithfulness to A/B test)
 python -m evals.run_eval
 python -m evals.run_eval --retriever hybrid --reranker crossencoder --faithfulness
+python -m evals.doc_eval [--retriever hybrid] [--neighbors 1]   # real documents, scored by page (needs the FAA manual ingested)
 
 # Embedding version migration (rows are tagged with embedding_model; never silently mix models)
 python scripts/backfill_embeddings.py --dry-run
@@ -124,6 +125,14 @@ migration 0004, which is idempotent on purpose (the integration tests' `create_a
 can create `documents` first). Chunks from plain `/v1/ingest` have NULL document
 fields and still work.
 
+Context widening: with `CONTEXT_NEIGHBORS>0`, `services/context.py` adds the next
+chunk(s) of the same document after each hit. It runs in `prepare_answer()` *after*
+the distance gate and *before* the session commit, so it cannot turn a refusal into
+an answer and never touches the DB later. `LLM_NUM_CTX` is sent to Ollama as
+`num_ctx`; Ollama silently truncates over-long prompts, so
+`warn_if_prompt_may_not_fit()` logs when one is near the window. Off by default;
+enable only after `python -m evals.doc_eval --neighbors 1`.
+
 Tests: `tests/auth_helpers.py` configures auth env (and per-process Redis key
 prefixes, so runs never interfere) before `app` loads; `conftest.py` provides an
 authenticated `client` (admin: query + ingest) and `anon_client` (no credentials).
@@ -145,8 +154,9 @@ The database holds 6 hand-written synthetic chunks
 (`scripts/load_sample_data.py`) — explicitly placeholder content, not real
 aircraft manual text — plus whatever PDFs have been ingested (PDF ingestion with
 page citations exists; collections, HNSW and background ingestion do not yet).
-Don't treat retrieval-quality numbers as meaningful beyond the toy corpus until a
-golden question set exists for real documents. `data/` (downloaded PDFs) is gitignored;
+The toy-corpus numbers from `run_eval` say nothing about real manuals; use
+`evals.doc_eval` (24 page-scored questions on AC 43.13-1B, `evals/golden_faa.json`)
+for those. `data/` (downloaded PDFs) is gitignored;
 `scripts/fetch_sample_docs.ps1` fetches free FAA manuals (public domain).
 
 ## Conventions

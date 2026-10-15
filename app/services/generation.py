@@ -4,9 +4,18 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.llm.ollama import OllamaClient
 from app.prompts import Prompt, get_prompt
+from app.services.context import expand_with_neighbours
 from app.services.pipeline import retrieve
+
+logger = get_logger(__name__)
+
+# Ollama's default context window when LLM_NUM_CTX is not set (tokens), and a
+# deliberately pessimistic characters-per-token figure for technical English.
+DEFAULT_NUM_CTX = 4096
+CHARS_PER_TOKEN = 3.5
 
 # The grounding instructions live in app/prompts/grounded_answer.<version>.txt,
 # not as a literal here: a reworded prompt is then a reviewable new file, and
@@ -67,6 +76,25 @@ def _where(chunk) -> str:
     return f", page {label} (PDF page {page})" if label else f", PDF page {page}"
 
 
+def warn_if_prompt_may_not_fit(system: str, prompt: str) -> bool:
+    """Log when the prompt is close to the model's context window.
+
+    Ollama silently drops whatever does not fit, so an over-long prompt loses
+    its beginning without any error. This is an estimate (no tokenizer), meant
+    to catch "I turned context widening on and forgot the window".
+    """
+    window = get_settings().llm_num_ctx or DEFAULT_NUM_CTX
+    estimated = int((len(system) + len(prompt)) / CHARS_PER_TOKEN)
+    too_long = estimated > window * 0.85
+    if too_long:
+        logger.warning(
+            "prompt may not fit the model context window",
+            estimated_tokens=estimated,
+            num_ctx=window,
+        )
+    return too_long
+
+
 def build_prompt(question: str, chunks: list[tuple]) -> str:
     """Numbered CONTEXT blocks; block number == citation number."""
     blocks = []
@@ -99,23 +127,32 @@ async def prepare_answer(
 
     retrieved = await retrieve(session, ollama, question, top_k)
 
-    await session.commit()
     relevant = [
         (chunk, distance)
         for chunk, distance in retrieved
         if distance <= settings.max_distance
     ]
+    # The gate above judges the retrieved hits only; neighbours are added after
+    # it, so widening the context can never turn a refusal into an answer.
+    if relevant and settings.context_neighbors > 0:
+        relevant = await expand_with_neighbours(
+            session, relevant, settings.context_neighbors, settings.context_max_chunks
+        )
+
+    await session.commit()
 
     if not relevant:
         return PreparedAnswer(question=question, refused=True, chunks=retrieved)
 
     active = system_prompt()
+    prompt = build_prompt(question, relevant)
+    warn_if_prompt_may_not_fit(active.text, prompt)
     return PreparedAnswer(
         question=question,
         refused=False,
         chunks=relevant,
         system=active.text,
-        prompt=build_prompt(question, relevant),
+        prompt=prompt,
         prompt_version=active.version,
     )
 

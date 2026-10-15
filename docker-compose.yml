@@ -51,6 +51,11 @@ services:
       AUTH_CLIENTS: ${AUTH_CLIENTS:-}
       # Read text from scanned PDF pages (needs the image built with INSTALL_OCR=true).
       OCR_ENABLED: ${OCR_ENABLED:-false}
+      # Also give the model the chunk(s) after each retrieved one (0 = off), and
+      # the context window it is asked to use (raise it before raising the first).
+      CONTEXT_NEIGHBORS: ${CONTEXT_NEIGHBORS:-0}
+      CONTEXT_MAX_CHUNKS: ${CONTEXT_MAX_CHUNKS:-8}
+      LLM_NUM_CTX: ${LLM_NUM_CTX:-4096}
 
     ports:
       - "8000:8000"

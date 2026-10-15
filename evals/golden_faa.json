@@ -1,0 +1,155 @@
+{
+  "source": "AC_43.13-1B_CHG_1",
+  "about": "Questions a maintenance engineer could ask of FAA AC 43.13-1B (with Change 1). Each lists the PDF page(s) that actually answer it, checked against the extracted text of the file fetched by scripts/fetch_sample_docs.ps1. 'pages' are PDF file page numbers (what a PDF viewer calls page N); 'labels' are the page numbers printed on those pages, for humans. A retrieved chunk counts as a hit when it comes from one of these pages. 'off_topic' questions have no answer in the manual and must be refused.",
+  "items": [
+    {
+      "id": "cable-critical-fatigue-area",
+      "question": "How is a critical fatigue area defined for aircraft control cables?",
+      "pages": [394],
+      "labels": ["7-39"]
+    },
+    {
+      "id": "cable-broken-wire-check",
+      "question": "How do I find broken wires in a control cable during an inspection?",
+      "pages": [394],
+      "labels": ["7-39"]
+    },
+    {
+      "id": "cable-kink-popped-core",
+      "question": "When must a kinked control cable or one with a popped core be replaced?",
+      "pages": [395],
+      "labels": ["7-40"]
+    },
+    {
+      "id": "cable-wear-limit",
+      "question": "How much can the outer wires of a control cable wear before the cable has to be replaced?",
+      "pages": [395],
+      "labels": ["7-40"]
+    },
+    {
+      "id": "cable-proof-load",
+      "question": "What proof load is used to test cable terminals and splices before installation?",
+      "pages": [386],
+      "labels": ["7-31"]
+    },
+    {
+      "id": "rivet-edge-distance",
+      "question": "What is the minimum edge distance and spacing for a single row of rivets?",
+      "pages": [175],
+      "labels": ["4-24"]
+    },
+    {
+      "id": "plywood-scarf-slope",
+      "question": "What slope is the steepest allowed for a scarf patch in a plywood skin?",
+      "pages": [67],
+      "labels": ["1-32"]
+    },
+    {
+      "id": "safety-wire-diameter",
+      "question": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
+      "pages": [374],
+      "labels": ["7-19"]
+    },
+    {
+      "id": "turnbuckle-exposed-threads",
+      "question": "After safetying a turnbuckle, how many threads of the terminal may still show?",
+      "pages": [405],
+      "labels": ["7-50"]
+    },
+    {
+      "id": "bond-resistance",
+      "question": "What resistance must the electrical bond between a piece of equipment and the aircraft structure have?",
+      "pages": [654],
+      "labels": ["11-83"]
+    },
+    {
+      "id": "galvanic-corrosion",
+      "question": "What is galvanic corrosion and how can I recognise it?",
+      "pages": [316],
+      "labels": ["6-10"]
+    },
+    {
+      "id": "exfoliation-corrosion",
+      "question": "What does exfoliation corrosion look like and where does it usually show up?",
+      "pages": [315],
+      "labels": ["6-9"]
+    },
+    {
+      "id": "titanium-oxide-colours",
+      "question": "Why does heated titanium change colour, and should the coloured film be removed?",
+      "pages": [349],
+      "labels": ["6-43"]
+    },
+    {
+      "id": "default-torque-table",
+      "question": "Which torque values do I use for nuts and bolts when the manufacturer gives none?",
+      "pages": [364],
+      "labels": ["7-9"]
+    },
+    {
+      "id": "unvented-fuel-cap",
+      "question": "What goes wrong if a vented fuel tank cap is replaced with an unvented one?",
+      "pages": [463],
+      "labels": ["8-25"]
+    },
+    {
+      "id": "weld-metal-fuel-tank",
+      "question": "Can a metal fuel tank be welded or soldered, and what has to be done first?",
+      "pages": [464],
+      "labels": ["8-26"]
+    },
+    {
+      "id": "wire-support-spacing",
+      "question": "How far apart can clamps be when supporting wires and cables in an aircraft?",
+      "pages": [620],
+      "labels": ["11-49"]
+    },
+    {
+      "id": "tire-inflation-gas",
+      "question": "Which gas is recommended for inflating aircraft tires, and which must never be used?",
+      "pages": [502],
+      "labels": ["9-13"]
+    },
+    {
+      "id": "lead-acid-nicad-storage",
+      "question": "Why is it dangerous to service lead-acid and nickel-cadmium batteries in the same area?",
+      "pages": [576],
+      "labels": ["11-5"]
+    },
+    {
+      "id": "magnetic-particle-materials",
+      "question": "Which materials can be checked with magnetic particle inspection?",
+      "pages": [267],
+      "labels": ["5-20"]
+    },
+    {
+      "id": "fabric-punch-tester",
+      "question": "How reliable is a mechanical punch tester for judging the condition of aircraft fabric?",
+      "pages": [112],
+      "labels": ["2-36"]
+    },
+    {
+      "id": "gas-cylinder-securing",
+      "question": "How should oxygen and fuel gas cylinders be secured in a welding area?",
+      "pages": [245],
+      "labels": ["4-94"]
+    },
+    {
+      "id": "blasting-dwell-time",
+      "question": "How long may an abrasive blast stream stay on one spot of an aluminium skin?",
+      "pages": [339],
+      "labels": ["6-33"]
+    },
+    {
+      "id": "empty-weight-cg",
+      "question": "What is the empty weight center of gravity of an aircraft?",
+      "pages": [550],
+      "labels": ["10-4"]
+    }
+  ],
+  "off_topic": [
+    { "id": "capital-of-france", "question": "what is the capital of France?" },
+    { "id": "chocolate-cake", "question": "give me a recipe for a chocolate cake" },
+    { "id": "kubernetes-ingress", "question": "how do I configure an ingress controller in Kubernetes?" }
+  ]
+}

@@ -83,8 +83,11 @@ async def _cleanup(session):
 
 async def test_keyword_search_finds_exact_terms(db_session):
     # Keyword search needs no embeddings at all — this chunk has none.
+    # "flumox" is an invented word, so no other chunk in a shared dev database
+    # (real manuals mention brakes, fuses and plugs all the time) can outrank
+    # this one or push it out of the top_k.
     chunk = DocumentChunk(
-        content="Brake temperature exceeding 300 degrees requires a fuse "
+        content="Brake temperature exceeding 300 degrees requires a flumox "
         "plug inspection before the next departure.",
         metadata_={"source": MARKER},
         embedding=None,
@@ -98,13 +101,13 @@ async def test_keyword_search_finds_exact_terms(db_session):
         return [(c, r) for c, r in results if c.metadata_.get("source") == MARKER]
 
     try:
-        results = _ours(await keyword_search(db_session, "fuse plug", top_k=10))
+        results = _ours(await keyword_search(db_session, "flumox plug", top_k=10))
         assert len(results) == 1
         assert results[0][0].id == chunk.id
         assert results[0][1] > 0  # ts_rank produced a score
 
-        # stemming: "brakes" matches "Brake"
-        results = _ours(await keyword_search(db_session, "brakes", top_k=10))
+        # stemming: "plugs" matches "plug"
+        results = _ours(await keyword_search(db_session, "flumox plugs", top_k=10))
         assert any(c.id == chunk.id for c, _ in results)
 
         # no overlap with this chunk's words -> it is absent
@@ -123,7 +126,7 @@ async def test_hybrid_search_fuses_and_backfills_distances(db_session):
         embedding=unit_vector(0),
     )
     keyword_chunk = DocumentChunk(
-        content="The fuse plug activation risk requires brake cooling.",
+        content="The flumox plug activation risk requires brake cooling.",
         metadata_={"source": MARKER, "kind": "keyword"},
         embedding=unit_vector(1),
     )
@@ -133,7 +136,7 @@ async def test_hybrid_search_fuses_and_backfills_distances(db_session):
     try:
         # Query vector points at the semantic chunk's axis.
         results = await hybrid_search(
-            db_session, FakeOllama(unit_vector(0)), "fuse plug", top_k=5
+            db_session, FakeOllama(unit_vector(0)), "flumox plug", top_k=5
         )
         ids = [chunk.id for chunk, _ in results]
         assert semantic_chunk.id in ids

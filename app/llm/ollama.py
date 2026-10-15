@@ -57,6 +57,12 @@ class OllamaClient:
                 )
         return embeddings
 
+    def _options(self) -> dict:
+        options: dict = {"temperature": self.settings.temperature}
+        if self.settings.llm_num_ctx:
+            options["num_ctx"] = self.settings.llm_num_ctx
+        return options
+
     async def chat(self, system: str, user: str) -> str:
         async def call() -> str:
             response = await self._client.post(
@@ -68,7 +74,7 @@ class OllamaClient:
                         {"role": "user", "content": user},
                     ],
                     "stream": False,
-                    "options": {"temperature": self.settings.temperature},
+                    "options": self._options(),
                 },
             )
             if response.status_code != 200:
@@ -112,7 +118,7 @@ class OllamaClient:
                         {"role": "user", "content": user},
                     ],
                     "stream": True,
-                    "options": {"temperature": self.settings.temperature},
+                    "options": self._options(),
                 },
             )
             response = await self._client.send(request, stream=True)
