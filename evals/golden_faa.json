@@ -1,155 +1,376 @@
 {
   "source": "AC_43.13-1B_CHG_1",
-  "about": "Questions a maintenance engineer could ask of FAA AC 43.13-1B (with Change 1). Each lists the PDF page(s) that actually answer it, checked against the extracted text of the file fetched by scripts/fetch_sample_docs.ps1. 'pages' are PDF file page numbers (what a PDF viewer calls page N); 'labels' are the page numbers printed on those pages, for humans. A retrieved chunk counts as a hit when it comes from one of these pages. 'off_topic' questions have no answer in the manual and must be refused.",
+  "about": "Questions a maintenance engineer could ask of FAA AC 43.13-1B (with Change 1). Each lists the PDF page(s) that actually answer it and 'facts': short phrases from the manual that the answer needs, both checked against the extracted text of the file fetched by scripts/fetch_sample_docs.ps1 (every fact sits inside one chunk on its page). 'pages' are PDF file page numbers (what a PDF viewer calls page N); 'labels' are the page numbers printed on those pages, for humans. A retrieved chunk counts as a hit when it comes from one of these pages; a fact counts as found when its text appears in a chunk the model would read (case and spacing ignored). 'off_topic' questions have no answer in the manual and must be refused: the first three are generic, the rest are aviation questions that this manual does not cover (checked: none of their key terms occur in it), which is the harder test for MAX_DISTANCE.",
   "items": [
     {
       "id": "cable-critical-fatigue-area",
       "question": "How is a critical fatigue area defined for aircraft control cables?",
-      "pages": [394],
-      "labels": ["7-39"]
+      "pages": [
+        394
+      ],
+      "labels": [
+        "7-39"
+      ],
+      "facts": [
+        "runs over, under, or around a pulley",
+        "within 1 foot of a swaged-on fitting"
+      ]
     },
     {
       "id": "cable-broken-wire-check",
       "question": "How do I find broken wires in a control cable during an inspection?",
-      "pages": [394],
-      "labels": ["7-39"]
+      "pages": [
+        394
+      ],
+      "labels": [
+        "7-39"
+      ],
+      "facts": [
+        "passing a cloth over the area",
+        "magnifying glass of 7 power"
+      ]
     },
     {
       "id": "cable-kink-popped-core",
       "question": "When must a kinked control cable or one with a popped core be replaced?",
-      "pages": [395],
-      "labels": ["7-40"]
+      "pages": [
+        395
+      ],
+      "labels": [
+        "7-40"
+      ],
+      "facts": [
+        "in a kinked cable, strands and wires are out of position",
+        "replace any cable that has a popped core"
+      ]
     },
     {
       "id": "cable-wear-limit",
       "question": "How much can the outer wires of a control cable wear before the cable has to be replaced?",
-      "pages": [395],
-      "labels": ["7-40"]
+      "pages": [
+        395
+      ],
+      "labels": [
+        "7-40"
+      ],
+      "facts": [
+        "40 to 50 percent"
+      ]
     },
     {
       "id": "cable-proof-load",
       "question": "What proof load is used to test cable terminals and splices before installation?",
-      "pages": [386],
-      "labels": ["7-31"]
+      "pages": [
+        386
+      ],
+      "labels": [
+        "7-31"
+      ],
+      "facts": [
+        "60 percent of the cable breaking strengths",
+        "3 minutes"
+      ]
     },
     {
       "id": "rivet-edge-distance",
       "question": "What is the minimum edge distance and spacing for a single row of rivets?",
-      "pages": [175],
-      "labels": ["4-24"]
+      "pages": [
+        175
+      ],
+      "labels": [
+        "4-24"
+      ],
+      "facts": [
+        "not be less than 2 times the diameter",
+        "3 times the diameter"
+      ]
     },
     {
       "id": "plywood-scarf-slope",
       "question": "What slope is the steepest allowed for a scarf patch in a plywood skin?",
-      "pages": [67],
-      "labels": ["1-32"]
+      "pages": [
+        67
+      ],
+      "labels": [
+        "1-32"
+      ],
+      "facts": [
+        "scarf slope of 1 in 12"
+      ]
     },
     {
       "id": "safety-wire-diameter",
       "question": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
-      "pages": [374],
-      "labels": ["7-19"]
+      "pages": [
+        374
+      ],
+      "labels": [
+        "7-19"
+      ],
+      "facts": [
+        ".032-inch minimum diameter wire",
+        "larger than .045 inch"
+      ]
     },
     {
       "id": "turnbuckle-exposed-threads",
       "question": "After safetying a turnbuckle, how many threads of the terminal may still show?",
-      "pages": [405],
-      "labels": ["7-50"]
+      "pages": [
+        405
+      ],
+      "labels": [
+        "7-50"
+      ],
+      "facts": [
+        "no more than three threads"
+      ]
     },
     {
       "id": "bond-resistance",
       "question": "What resistance must the electrical bond between a piece of equipment and the aircraft structure have?",
-      "pages": [654],
-      "labels": ["11-83"]
+      "pages": [
+        654
+      ],
+      "labels": [
+        "11-83"
+      ],
+      "facts": [
+        "less than 2.5 milliohms"
+      ]
     },
     {
       "id": "galvanic-corrosion",
       "question": "What is galvanic corrosion and how can I recognise it?",
-      "pages": [316],
-      "labels": ["6-10"]
+      "pages": [
+        316
+      ],
+      "labels": [
+        "6-10"
+      ],
+      "facts": [
+        "two dissimilar metals make contact",
+        "buildup of corrosion at the joint"
+      ]
     },
     {
       "id": "exfoliation-corrosion",
       "question": "What does exfoliation corrosion look like and where does it usually show up?",
-      "pages": [315],
-      "labels": ["6-9"]
+      "pages": [
+        315
+      ],
+      "labels": [
+        "6-9"
+      ],
+      "facts": [
+        "lifting up the surface grains",
+        "extruded sections"
+      ]
     },
     {
       "id": "titanium-oxide-colours",
       "question": "Why does heated titanium change colour, and should the coloured film be removed?",
-      "pages": [349],
-      "labels": ["6-43"]
+      "pages": [
+        349
+      ],
+      "labels": [
+        "6-43"
+      ],
+      "facts": [
+        "blue oxide coating",
+        "should not be removed"
+      ]
     },
     {
       "id": "default-torque-table",
       "question": "Which torque values do I use for nuts and bolts when the manufacturer gives none?",
-      "pages": [364],
-      "labels": ["7-9"]
+      "pages": [
+        364
+      ],
+      "labels": [
+        "7-9"
+      ],
+      "facts": [
+        "when specific torque is not supplied by the manufacturer"
+      ]
     },
     {
       "id": "unvented-fuel-cap",
       "question": "What goes wrong if a vented fuel tank cap is replaced with an unvented one?",
-      "pages": [463],
-      "labels": ["8-25"]
+      "pages": [
+        463
+      ],
+      "labels": [
+        "8-25"
+      ],
+      "facts": [
+        "fuel starvation",
+        "collapse of the fuel tank"
+      ]
     },
     {
       "id": "weld-metal-fuel-tank",
       "question": "Can a metal fuel tank be welded or soldered, and what has to be done first?",
-      "pages": [464],
-      "labels": ["8-26"]
+      "pages": [
+        464
+      ],
+      "labels": [
+        "8-26"
+      ],
+      "facts": [
+        "must not be welded or soldered",
+        "adequately purged"
+      ]
     },
     {
       "id": "wire-support-spacing",
       "question": "How far apart can clamps be when supporting wires and cables in an aircraft?",
-      "pages": [620],
-      "labels": ["11-49"]
+      "pages": [
+        620
+      ],
+      "labels": [
+        "11-49"
+      ],
+      "facts": [
+        "not more than 24 inches"
+      ]
     },
     {
       "id": "tire-inflation-gas",
       "question": "Which gas is recommended for inflating aircraft tires, and which must never be used?",
-      "pages": [502],
-      "labels": ["9-13"]
+      "pages": [
+        502
+      ],
+      "labels": [
+        "9-13"
+      ],
+      "facts": [
+        "use of nitrogen to inflate tires is recommended",
+        "do not use oxygen to inflate tires"
+      ]
     },
     {
       "id": "lead-acid-nicad-storage",
       "question": "Why is it dangerous to service lead-acid and nickel-cadmium batteries in the same area?",
-      "pages": [576],
-      "labels": ["11-5"]
+      "pages": [
+        576
+      ],
+      "labels": [
+        "11-5"
+      ],
+      "facts": [
+        "extremely dangerous to store or service lead-acid and nicad batteries"
+      ]
     },
     {
       "id": "magnetic-particle-materials",
       "question": "Which materials can be checked with magnetic particle inspection?",
-      "pages": [267],
-      "labels": ["5-20"]
+      "pages": [
+        267
+      ],
+      "labels": [
+        "5-20"
+      ],
+      "facts": [
+        "ferromagnetic materials (iron and steel)"
+      ]
     },
     {
       "id": "fabric-punch-tester",
       "question": "How reliable is a mechanical punch tester for judging the condition of aircraft fabric?",
-      "pages": [112],
-      "labels": ["2-36"]
+      "pages": [
+        112
+      ],
+      "labels": [
+        "2-36"
+      ],
+      "facts": [
+        "punch test accuracy will depend"
+      ]
     },
     {
       "id": "gas-cylinder-securing",
       "question": "How should oxygen and fuel gas cylinders be secured in a welding area?",
-      "pages": [245],
-      "labels": ["4-94"]
+      "pages": [
+        245
+      ],
+      "labels": [
+        "4-94"
+      ],
+      "facts": [
+        "secure oxygen and fuel gas cylinders"
+      ]
     },
     {
       "id": "blasting-dwell-time",
       "question": "How long may an abrasive blast stream stay on one spot of an aluminium skin?",
-      "pages": [339],
-      "labels": ["6-33"]
+      "pages": [
+        339
+      ],
+      "labels": [
+        "6-33"
+      ],
+      "facts": [
+        "longer than 15 seconds"
+      ]
     },
     {
       "id": "empty-weight-cg",
       "question": "What is the empty weight center of gravity of an aircraft?",
-      "pages": [550],
-      "labels": ["10-4"]
+      "pages": [
+        550
+      ],
+      "labels": [
+        "10-4"
+      ],
+      "facts": [
+        "the empty weight center of gravity (ewcg) is the cg of an aircraft"
+      ]
     }
   ],
   "off_topic": [
-    { "id": "capital-of-france", "question": "what is the capital of France?" },
-    { "id": "chocolate-cake", "question": "give me a recipe for a chocolate cake" },
-    { "id": "kubernetes-ingress", "question": "how do I configure an ingress controller in Kubernetes?" }
+    {
+      "id": "capital-of-france",
+      "question": "what is the capital of France?"
+    },
+    {
+      "id": "chocolate-cake",
+      "question": "give me a recipe for a chocolate cake"
+    },
+    {
+      "id": "kubernetes-ingress",
+      "question": "how do I configure an ingress controller in Kubernetes?"
+    },
+    {
+      "id": "a320-max-takeoff-weight",
+      "question": "What is the maximum takeoff weight of an Airbus A320?"
+    },
+    {
+      "id": "b737-jacking",
+      "question": "How do I jack up a Boeing 737 to change a main wheel?"
+    },
+    {
+      "id": "g1000-flight-plan",
+      "question": "How do I load a flight plan into a Garmin G1000?"
+    },
+    {
+      "id": "mel-dispatch",
+      "question": "What are the rules for dispatching with an inoperative item under the minimum equipment list?"
+    },
+    {
+      "id": "ge90-fan-blades",
+      "question": "How do I replace the fan blades on a GE90 turbofan engine?"
+    },
+    {
+      "id": "outflow-valve",
+      "question": "How is a cabin pressurization outflow valve adjusted on an airliner?"
+    },
+    {
+      "id": "carbon-propeller-repair",
+      "question": "How do I repair a carbon fiber propeller blade?"
+    },
+    {
+      "id": "helicopter-rotor-bolt",
+      "question": "What torque applies to a helicopter main rotor blade bolt?"
+    }
   ]
 }

@@ -1,0 +1,454 @@
+{
+  "label": "retriever=hybrid  reranker=none  neighbors=0  max_distance=0.48  top_k=5",
+  "summary": {
+    "questions": 24,
+    "recall@1": 0.9166666666666666,
+    "recall@3": 1.0,
+    "recall@5": 1.0,
+    "mrr": 0.951388888888889,
+    "reaches_prompt": 1.0,
+    "off_topic_refused": 1.0
+  },
+  "items": [
+    {
+      "id": "cable-critical-fatigue-area",
+      "question": "How is a critical fatigue area defined for aircraft control cables?",
+      "rank": 1,
+      "best_hit_distance": 0.35748756363765544,
+      "top_distance": 0.35748756363765544,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "cable-broken-wire-check",
+      "question": "How do I find broken wires in a control cable during an inspection?",
+      "rank": 1,
+      "best_hit_distance": 0.39140032171024286,
+      "top_distance": 0.39140032171024286,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "cable-kink-popped-core",
+      "question": "When must a kinked control cable or one with a popped core be replaced?",
+      "rank": 1,
+      "best_hit_distance": 0.36831241846084595,
+      "top_distance": 0.36831241846084595,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "cable-wear-limit",
+      "question": "How much can the outer wires of a control cable wear before the cable has to be replaced?",
+      "rank": 1,
+      "best_hit_distance": 0.4051965942627226,
+      "top_distance": 0.4051965942627226,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "cable-proof-load",
+      "question": "What proof load is used to test cable terminals and splices before installation?",
+      "rank": 1,
+      "best_hit_distance": 0.44516978994517864,
+      "top_distance": 0.44516978994517864,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "rivet-edge-distance",
+      "question": "What is the minimum edge distance and spacing for a single row of rivets?",
+      "rank": 1,
+      "best_hit_distance": 0.2566420726010238,
+      "top_distance": 0.3161012968775324,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "plywood-scarf-slope",
+      "question": "What slope is the steepest allowed for a scarf patch in a plywood skin?",
+      "rank": 1,
+      "best_hit_distance": 0.21220743474245618,
+      "top_distance": 0.21220743474245618,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "safety-wire-diameter",
+      "question": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
+      "rank": 1,
+      "best_hit_distance": 0.2729962738756755,
+      "top_distance": 0.2729962738756755,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "turnbuckle-exposed-threads",
+      "question": "After safetying a turnbuckle, how many threads of the terminal may still show?",
+      "rank": 1,
+      "best_hit_distance": 0.3543995347020191,
+      "top_distance": 0.3543995347020191,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "bond-resistance",
+      "question": "What resistance must the electrical bond between a piece of equipment and the aircraft structure have?",
+      "rank": 1,
+      "best_hit_distance": 0.30312969647291443,
+      "top_distance": 0.30312969647291443,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "galvanic-corrosion",
+      "question": "What is galvanic corrosion and how can I recognise it?",
+      "rank": 1,
+      "best_hit_distance": 0.37547906114223173,
+      "top_distance": 0.37547906114223173,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "exfoliation-corrosion",
+      "question": "What does exfoliation corrosion look like and where does it usually show up?",
+      "rank": 1,
+      "best_hit_distance": 0.41475162857806,
+      "top_distance": 0.41475162857806,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "titanium-oxide-colours",
+      "question": "Why does heated titanium change colour, and should the coloured film be removed?",
+      "rank": 1,
+      "best_hit_distance": 0.45626114756134695,
+      "top_distance": 0.45626114756134695,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "default-torque-table",
+      "question": "Which torque values do I use for nuts and bolts when the manufacturer gives none?",
+      "rank": 1,
+      "best_hit_distance": 0.3518741710298433,
+      "top_distance": 0.3518741710298433,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "unvented-fuel-cap",
+      "question": "What goes wrong if a vented fuel tank cap is replaced with an unvented one?",
+      "rank": 1,
+      "best_hit_distance": 0.4103349898363614,
+      "top_distance": 0.4103349898363614,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "weld-metal-fuel-tank",
+      "question": "Can a metal fuel tank be welded or soldered, and what has to be done first?",
+      "rank": 2,
+      "best_hit_distance": 0.45887441565458276,
+      "top_distance": 0.42231707838970756,
+      "rr": 0.5,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "wire-support-spacing",
+      "question": "How far apart can clamps be when supporting wires and cables in an aircraft?",
+      "rank": 3,
+      "best_hit_distance": 0.37003486455523094,
+      "top_distance": 0.32820256520515345,
+      "rr": 0.3333333333333333,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "tire-inflation-gas",
+      "question": "Which gas is recommended for inflating aircraft tires, and which must never be used?",
+      "rank": 1,
+      "best_hit_distance": 0.3322344420375316,
+      "top_distance": 0.3322344420375316,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "lead-acid-nicad-storage",
+      "question": "Why is it dangerous to service lead-acid and nickel-cadmium batteries in the same area?",
+      "rank": 1,
+      "best_hit_distance": 0.4789763899347016,
+      "top_distance": 0.4789763899347016,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "magnetic-particle-materials",
+      "question": "Which materials can be checked with magnetic particle inspection?",
+      "rank": 1,
+      "best_hit_distance": 0.3037069413399568,
+      "top_distance": 0.3037069413399568,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "fabric-punch-tester",
+      "question": "How reliable is a mechanical punch tester for judging the condition of aircraft fabric?",
+      "rank": 1,
+      "best_hit_distance": 0.41979738591891247,
+      "top_distance": 0.41979738591891247,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "gas-cylinder-securing",
+      "question": "How should oxygen and fuel gas cylinders be secured in a welding area?",
+      "rank": 1,
+      "best_hit_distance": 0.3320297598838806,
+      "top_distance": 0.3320297598838806,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "blasting-dwell-time",
+      "question": "How long may an abrasive blast stream stay on one spot of an aluminium skin?",
+      "rank": 1,
+      "best_hit_distance": 0.3443435059412545,
+      "top_distance": 0.3443435059412545,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    },
+    {
+      "id": "empty-weight-cg",
+      "question": "What is the empty weight center of gravity of an aircraft?",
+      "rank": 1,
+      "best_hit_distance": 0.3146736313468589,
+      "top_distance": 0.3146736313468589,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0
+    }
+  ],
+  "off_topic": [
+    {
+      "id": "capital-of-france",
+      "question": "what is the capital of France?",
+      "top_distance": 0.824490614083592,
+      "refused": true
+    },
+    {
+      "id": "chocolate-cake",
+      "question": "give me a recipe for a chocolate cake",
+      "top_distance": 0.7180279249036043,
+      "refused": true
+    },
+    {
+      "id": "kubernetes-ingress",
+      "question": "how do I configure an ingress controller in Kubernetes?",
+      "top_distance": 0.724884697053265,
+      "refused": true
+    }
+  ],
+  "sweep": [
+    {
+      "max_distance": 0.3,
+      "reaches_prompt": 0.125,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.32,
+      "reaches_prompt": 0.25,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.34,
+      "reaches_prompt": 0.3333333333333333,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.36,
+      "reaches_prompt": 0.5,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.38,
+      "reaches_prompt": 0.625,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.4,
+      "reaches_prompt": 0.6666666666666666,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.42,
+      "reaches_prompt": 0.8333333333333334,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.44,
+      "reaches_prompt": 0.8333333333333334,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.46,
+      "reaches_prompt": 0.9583333333333334,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.48,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.5,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.52,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.54,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.56,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.58,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.6,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.62,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.64,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.66,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.68,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.7,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.72,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 0.6666666666666666
+    },
+    {
+      "max_distance": 0.74,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.76,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.78,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.8,
+      "reaches_prompt": 1.0,
+      "off_topic_refused": 0.3333333333333333
+    }
+  ]
+}

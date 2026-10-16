@@ -8,6 +8,7 @@ broken scoreboard cannot hide a retrieval regression.
 
 from evals.doc_eval import (
     best_ceiling,
+    count_facts,
     is_hit,
     load_golden,
     score_item,
@@ -99,6 +100,53 @@ def test_context_hit_sees_the_widened_context_not_just_the_hits():
     assert after_widening["context_hit"] is True
 
 
+# ------------------------------------------------------------------- facts
+
+
+def ctx(*texts):
+    return [(Chunk(394, content=t), 0.3) for t in texts]
+
+
+def test_facts_are_counted_across_all_the_chunks_the_model_reads():
+    context = ctx("Inspect for broken wires.", "Pass a cloth over the area.")
+    assert count_facts(context, ["broken wires", "a cloth over the area"]) == 2
+    assert count_facts(context, ["broken wires", "magnifying glass"]) == 1
+
+
+def test_fact_matching_ignores_case_and_spacing():
+    context = ctx("A swaged-on   FITTING can be\nan eye or fork.")
+    assert count_facts(context, ["swaged-on fitting can be an eye"]) == 1
+
+
+def test_the_sentence_that_answers_the_question_can_be_missing_from_the_right_page():
+    # the hit stops at "c."; the answer ("pass a cloth") is in the next chunk
+    hit = (Chunk(394, content="a. Inspect at each annual. b. Define the area. c."), 0.3)
+    follower = (Chunk(394, content="d. Pass a cloth over the area to snag wires."), 0.3)
+    facts = ["pass a cloth over the area"]
+
+    plain = score_item([hit], SOURCE, [394], 0.48, [hit], facts)
+    widened = score_item([hit], SOURCE, [394], 0.48, [hit, follower], facts)
+
+    assert plain["context_hit"] is True  # right page, yet...
+    assert plain["facts_found"] == 0  # ...the answer is not in front of the model
+    assert widened["facts_found"] == 1
+
+
+def test_no_facts_listed_means_no_fact_columns():
+    row = score_item(results((394, 0.3)), SOURCE, [394], 0.48, results((394, 0.3)))
+    assert "facts_total" not in row
+
+
+def test_fact_coverage_is_the_mean_share_and_all_facts_the_share_complete():
+    rows = [
+        score_item(results((5, 0.2)), SOURCE, [5], 0.48, ctx("a b"), ["a", "b"]),
+        score_item(results((5, 0.2)), SOURCE, [5], 0.48, ctx("a"), ["a", "b"]),
+    ]
+    summary = summarise(rows, [])
+    assert summary["fact_coverage"] == (1.0 + 0.5) / 2
+    assert summary["all_facts"] == 0.5
+
+
 def test_off_topic_is_refused_when_nothing_is_close():
     assert score_off_topic(results((1, 0.82)), 0.48)["refused"] is True
     assert score_off_topic(results((1, 0.40)), 0.48)["refused"] is False
@@ -175,5 +223,7 @@ def test_the_golden_file_is_well_formed():
             isinstance(p, int) and p > 0 for p in item["pages"]
         )
         assert len(item["labels"]) == len(item["pages"])
+        assert item["facts"] and all(f.strip() for f in item["facts"])
 
-    assert len(golden["off_topic"]) >= 3
+    # generic off-topic questions plus aviation ones the manual does not cover
+    assert len(golden["off_topic"]) >= 10

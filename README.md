@@ -562,7 +562,9 @@ embeddings miss.
 re-ingested into new ids, so `evals/doc_eval.py` scores by **page**: each question
 in `evals/golden_faa.json` lists the PDF page(s) that answer it (checked against
 the text of AC 43.13-1B), and a retrieved chunk is a hit when it comes from one of
-them. 24 questions plus 3 off-topic ones that must be refused.
+them, plus the key phrases its answer needs (`facts`). There are 24 questions and
+11 off-topic ones that must be refused: 3 generic, and 8 aviation questions this
+manual does not cover (the harder test for `MAX_DISTANCE`).
 
 ```powershell
 python -m evals.doc_eval                          # vector baseline
@@ -580,6 +582,27 @@ and after every retrieval change and keep the saved files.
 
 Needs Postgres with the manual ingested and Ollama running. CI covers the scoring
 logic and the golden file (`tests/test_doc_eval.py`), not the live numbers.
+
+**Facts check.** Finding the right page is not the same as giving the model the
+sentence that answers the question: a hit can stop mid-section. For each question
+the report counts how many of its `facts` appear in the chunks the model would
+read, so `--neighbors 1` can be shown to help (or not) instead of assumed.
+
+**First live results** (AC 43.13-1B, 24 questions, 2026-10-15, taken before the
+facts check and the aviation off-topic questions existed):
+
+| Run | recall@1 | recall@3 | recall@5 | MRR |
+|---|---|---|---|---|
+| vector (`--retriever vector`) | 0.875 | 1.000 | 1.000 | 0.924 |
+| hybrid (`--retriever hybrid`) | 0.917 | 1.000 | 1.000 | 0.951 |
+
+The right page passed the `MAX_DISTANCE` gate for 24 of 24 questions, and the 3
+generic off-topic questions were all refused (closest chunk 0.718). The worst right
+answer sat at distance 0.479 against a limit of 0.48, so the limit has almost no
+margin; set it from the sweep after running against the aviation off-topic
+questions. Hybrid moved two questions up a rank and changed nothing else.
+`HYBRID_ENABLED` and `MAX_DISTANCE` are passed through `docker-compose.yml`, so
+set them in `.env` and run `docker compose up -d`.
 
 ## Stop / reset
 

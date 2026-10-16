@@ -16,8 +16,10 @@ running for the embedding model. It reports four things:
 - recall@k / MRR: does the right page show up, and how high?
 - reaches prompt: does a right-page chunk pass the MAX_DISTANCE gate, i.e. is
   the question answered rather than refused?
-- context hit (with --neighbors): is a right page among the chunks the model
-  would actually read after widening?
+- context hit and answer facts: is a right page among the chunks the model would
+  actually read (after widening, with --neighbors), and do the key phrases of the
+  answer appear in them? Retrieving the right page can still leave out the
+  sentence that answers the question; the facts check sees that.
 - refusals: off-topic questions must be refused. The distances of both groups
   show where MAX_DISTANCE should sit.
 """
@@ -60,14 +62,34 @@ def is_hit(chunk, source: str, pages: list[int]) -> bool:
     )
 
 
+def _normalise(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def count_facts(context: list[tuple], facts: list[str]) -> int:
+    """How many of the answer's key phrases appear in the chunks the model reads.
+
+    Case and spacing are ignored. This is the check that sees the "answer
+    continues in the next chunk" problem: the right page can be retrieved and
+    still leave out the sentence that answers the question.
+    """
+    text = _normalise(" ".join(chunk.content for chunk, _ in context))
+    return sum(_normalise(fact) in text for fact in facts)
+
+
 def score_item(
     results: list[tuple],
     source: str,
     pages: list[int],
     max_distance: float,
     context: list[tuple] | None = None,
+    facts: list[str] | None = None,
 ) -> dict:
-    """Score one answerable question from its ranked (chunk, distance) results."""
+    """Score one answerable question from its ranked (chunk, distance) results.
+
+    `context` is what the model would be given (the hits that pass the distance
+    gate, widened if neighbours are on); `facts` are phrases its answer needs.
+    """
     hits = [is_hit(chunk, source, pages) for chunk, _ in results]
     rank = next((r for r, hit in enumerate(hits, 1) if hit), None)
     hit_distances = [d for (_, d), hit in zip(results, hits, strict=True) if hit]
@@ -85,6 +107,9 @@ def score_item(
     if context is not None:
         row["context_hit"] = any(is_hit(chunk, source, pages) for chunk, _ in context)
         row["context_chars"] = sum(len(chunk.content) for chunk, _ in context)
+        if facts:
+            row["facts_found"] = count_facts(context, facts)
+            row["facts_total"] = len(facts)
     return row
 
 
@@ -106,6 +131,14 @@ def summarise(rows: list[dict], off_topic: list[dict]) -> dict:
         summary["context_chars_mean"] = sum(chars) / n
         summary["context_chars_max"] = max(chars)
         summary["context_tokens_max_est"] = int(max(chars) / CHARS_PER_TOKEN)
+    scored = [r for r in rows if "facts_total" in r]
+    if scored:
+        summary["fact_coverage"] = sum(
+            r["facts_found"] / r["facts_total"] for r in scored
+        ) / len(scored)
+        summary["all_facts"] = sum(
+            r["facts_found"] == r["facts_total"] for r in scored
+        ) / len(scored)
     if off_topic:
         summary["off_topic_refused"] = sum(r["refused"] for r in off_topic) / len(
             off_topic
@@ -169,8 +202,10 @@ def print_report(
 ):
     print()
     print(label)
-    print(f"{'question':<34} {'rank':>4} {'hit dist':>8}  r@1 r@3 r@5  prompt  ctx")
-    print("-" * 82)
+    print(
+        f"{'question':<34} {'rank':>4} {'hit dist':>8}  r@1 r@3 r@5  prompt  ctx  facts"
+    )
+    print("-" * 88)
     for r in per_item:
         rank = r["rank"] if r["rank"] is not None else "-"
         dist = (
@@ -181,17 +216,28 @@ def print_report(
         ctx = ""
         if "context_hit" in r:
             ctx = "yes" if r["context_hit"] else "NO"
+        facts = ""
+        if "facts_total" in r:
+            facts = f"{r['facts_found']}/{r['facts_total']}"
+            if r["facts_found"] < r["facts_total"]:
+                facts += " <- missing"
         print(
             f"{r['id'][:33]:<34} {rank!s:>4} {dist:>8}   "
             f"{r['recall@1']:.0f}   {r['recall@3']:.0f}   {r['recall@5']:.0f}   "
-            f"{'yes' if r['reaches_prompt'] else 'NO':>5}  {ctx}"
+            f"{'yes' if r['reaches_prompt'] else 'NO':>5}  {ctx:<3}  {facts}"
         )
-    print("-" * 82)
+    print("-" * 88)
     print(
         f"recall@1={summary['recall@1']:.3f}  recall@3={summary['recall@3']:.3f}  "
         f"recall@5={summary['recall@5']:.3f}  MRR={summary['mrr']:.3f}  "
         f"reaches_prompt={summary['reaches_prompt']:.3f}  ({summary['questions']} questions)"
     )
+    if "fact_coverage" in summary:
+        print(
+            f"answer facts in the context the model reads: "
+            f"coverage={summary['fact_coverage']:.3f}  "
+            f"questions with every fact={summary['all_facts']:.3f}"
+        )
     if "context_hit" in summary:
         print(
             f"context_hit={summary['context_hit']:.3f}  "
@@ -286,20 +332,24 @@ async def run(
 
             for item in golden["items"]:
                 results = await ask(item["question"])
-                context = None
+                # what the model would read: the hits that pass the gate,
+                # widened exactly as the API does it
+                context = [
+                    (c, d)
+                    for c, d in results[: settings.top_k]
+                    if d <= settings.max_distance
+                ]
                 if neighbors:
-                    # what the model would read: the hits that pass the gate,
-                    # widened exactly as the API does it
-                    served = [
-                        (c, d)
-                        for c, d in results[: settings.top_k]
-                        if d <= settings.max_distance
-                    ]
                     context = await expand_with_neighbours(
-                        session, served, neighbors, max_chunks
+                        session, context, neighbors, max_chunks
                     )
                 row = score_item(
-                    results, source, item["pages"], settings.max_distance, context
+                    results,
+                    source,
+                    item["pages"],
+                    settings.max_distance,
+                    context,
+                    item.get("facts"),
                 )
                 per_item.append({"id": item["id"], "question": item["question"], **row})
 
@@ -355,7 +405,7 @@ if __name__ == "__main__":
         "--neighbors",
         type=int,
         default=0,
-        help="also score the context after adding this many following chunks per hit",
+        help="add this many following chunks after each hit before scoring the context",
     )
     parser.add_argument(
         "--max-chunks",
