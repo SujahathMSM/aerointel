@@ -22,6 +22,15 @@ running for the embedding model. It reports four things:
   sentence that answers the question; the facts check sees that.
 - refusals: off-topic questions must be refused. The distances of both groups
   show where MAX_DISTANCE should sit.
+- answerability: a question word that appears in no stored chunk ("Airbus",
+  "Garmin") means the documents cannot answer it. The report shows which right
+  questions that rule would wrongly refuse and which off-topic questions the
+  distance gate lets through but it would catch, for each setting.
+
+To see why one question misses, print what was retrieved for it:
+
+    python -m evals.doc_eval --show titanium-oxide-colours
+    python -m evals.doc_eval --show all
 """
 
 import argparse
@@ -36,6 +45,7 @@ from app.core.config import get_settings
 from app.db.base import SessionFactory
 from app.db.models import DocumentChunk
 from app.llm.ollama import OllamaClient
+from app.services.answerability import question_terms, term_chunk_counts
 from app.services.context import expand_with_neighbours
 from app.services.generation import CHARS_PER_TOKEN
 from app.services.pipeline import retrieve
@@ -118,6 +128,150 @@ def score_off_topic(results: list[tuple], max_distance: float) -> dict:
     return {"top_distance": top, "refused": top is None or top > max_distance}
 
 
+def unknown_words(counts: dict[str, int], min_chunks: int) -> list[str]:
+    """Question words contained in fewer than `min_chunks` stored chunks."""
+    return [term for term, n in counts.items() if n < min_chunks]
+
+
+def answerability_sweep(
+    valid: list[dict[str, int]],
+    off_topic: list[tuple[dict[str, int], bool]],
+    min_chunks_options: tuple[int, ...] = (1, 2, 3),
+    min_unknown_options: tuple[int, ...] = (1, 2),
+) -> list[dict]:
+    """What the vocabulary check would do at each setting.
+
+    `valid` are the word counts of questions the documents can answer;
+    `off_topic` pairs the word counts of questions they cannot with whether the
+    distance gate already refused them. For each (min_chunks, min_unknown):
+    how many right questions would be wrongly refused, and how many off-topic
+    questions that got *past* the distance gate would now be refused.
+    """
+    passed_gate = [counts for counts, gate_refused in off_topic if not gate_refused]
+    rows = []
+    for min_chunks in min_chunks_options:
+        for min_unknown in min_unknown_options:
+
+            def refuses(counts: dict[str, int]) -> bool:
+                return len(unknown_words(counts, min_chunks)) >= min_unknown  # noqa: B023
+
+            rows.append(
+                {
+                    "min_chunks": min_chunks,
+                    "min_unknown": min_unknown,
+                    "valid_refused": sum(refuses(c) for c in valid),
+                    "valid_total": len(valid),
+                    "caught": sum(refuses(c) for c in passed_gate),
+                    "gate_missed": len(passed_gate),
+                }
+            )
+    return rows
+
+
+def describe_retrieval(
+    item_id: str,
+    question: str,
+    results: list[tuple],
+    source: str,
+    pages: list[int] | None,
+    facts: list[str] | None,
+    limit: int = 5,
+    width: int = 320,
+) -> str:
+    """Readable dump of what was retrieved for one question (for --show)."""
+    lines = [f"--- {item_id}: {question}"]
+    if pages:
+        lines.append(f"    expected PDF page(s): {pages}")
+    for rank, (chunk, distance) in enumerate(results[:limit], 1):
+        mark = "  <- right page" if pages and is_hit(chunk, source, pages) else ""
+        label = getattr(chunk, "page_label", None)
+        where = f"PDF p.{getattr(chunk, 'page', '?')}" + (
+            f" ({label})" if label else ""
+        )
+        lines.append(
+            f"  #{rank} chunk {chunk.id} {where} "
+            f"idx {getattr(chunk, 'chunk_index', '?')} dist {distance:.3f}{mark}"
+        )
+        lines.append("      " + " ".join(chunk.content.split())[:width])
+    if facts:
+        for fact in facts:
+            holders = [
+                str(rank)
+                for rank, (chunk, _d) in enumerate(results[:limit], 1)
+                if _normalise(fact) in _normalise(chunk.content)
+            ]
+            where = (
+                "in result " + ", ".join(holders)
+                if holders
+                else "NOT in any shown chunk"
+            )
+            lines.append(f"  fact {fact!r}: {where}")
+    return "\n".join(lines)
+
+
+def print_answerability(
+    items: list[dict],
+    off_topic: list[dict],
+    sweep: list[dict],
+    min_chunks: int,
+    combined: list[dict] | None = None,
+    min_unknown: int = 1,
+    current: float | None = None,
+) -> None:
+    print()
+    print("answerability (question words found in no stored chunk):")
+    flagged = [
+        (r["id"], unknown_words(r["term_counts"], min_chunks))
+        for r in items
+        if unknown_words(r["term_counts"], min_chunks)
+    ]
+    if flagged:
+        print("  right questions containing such a word:")
+        for item_id, words in flagged:
+            print(f"    {item_id:<28} {', '.join(words)}")
+    else:
+        print("  no right question contains such a word")
+    missed = [r for r in off_topic if not r["refused"]]
+    print(f"  off-topic questions the distance gate let through: {len(missed)}")
+    for r in missed:
+        words = unknown_words(r["term_counts"], min_chunks)
+        shown = ", ".join(words) if words else "none (every word occurs somewhere)"
+        print(f"    {r['id']:<28} unknown words: {shown}")
+    print("  setting                    right questions refused   gate misses caught")
+    for row in sweep:
+        print(
+            f"  min_chunks={row['min_chunks']} min_unknown={row['min_unknown']}"
+            f"       {row['valid_refused']:>3}/{row['valid_total']:<3}"
+            f"                   {row['caught']}/{row['gate_missed']}"
+        )
+    if combined:
+        best = best_ceiling(combined)
+        print(
+            f"  with min_chunks={min_chunks} min_unknown={min_unknown} switched on "
+            f"(ANSWERABILITY_MODE=refuse):"
+        )
+        if best is None:
+            print("    still no MAX_DISTANCE that refuses every off-topic question")
+        else:
+            now = ""
+            if current is not None:
+                at = next(
+                    (c for c in combined if abs(c["max_distance"] - current) < 0.01),
+                    None,
+                )
+                if at:
+                    now = (
+                        f"; at the current {current} it would let "
+                        f"{at['reaches_prompt']:.0%} through and refuse "
+                        f"{at['off_topic_refused']:.0%}"
+                    )
+            print(
+                f"    MAX_DISTANCE anywhere from {best['low']:.2f} to {best['high']:.2f} "
+                f"lets {best['reaches_prompt']:.0%} of right pages through and refuses "
+                f"all off-topic questions (middle: {best['max_distance']:.2f}){now}"
+            )
+
+
 def summarise(rows: list[dict], off_topic: list[dict]) -> dict:
     n = len(rows)
     summary: dict = {"questions": n}
@@ -161,6 +315,49 @@ def threshold_sweep(
         )
         refused = sum(
             r["top_distance"] is None or r["top_distance"] > ceiling for r in off_topic
+        )
+        sweep.append(
+            {
+                "max_distance": ceiling,
+                "reaches_prompt": reach / len(rows),
+                "off_topic_refused": refused / len(off_topic) if off_topic else None,
+            }
+        )
+    return sweep
+
+
+def combined_sweep(
+    rows: list[dict],
+    off_topic: list[dict],
+    min_chunks: int,
+    min_unknown: int,
+    low: float = 0.40,
+    high: float = 0.62,
+) -> list[dict]:
+    """Like `threshold_sweep`, with the vocabulary rule switched on.
+
+    A question is refused when the nearest chunk is beyond the ceiling *or* it
+    contains `min_unknown` words found in fewer than `min_chunks` chunks. The
+    rule lets a looser ceiling (more room above the worst right answer) stay
+    safe against questions about things the documents never mention.
+    """
+
+    def vocab_refuses(row: dict) -> bool:
+        return len(unknown_words(row["term_counts"], min_chunks)) >= min_unknown
+
+    sweep = []
+    steps = round((high - low) / 0.02)
+    for i in range(steps + 1):
+        ceiling = round(low + 0.02 * i, 2)
+        reach = sum(
+            r["best_hit_distance"] is not None
+            and r["best_hit_distance"] <= ceiling
+            and not vocab_refuses(r)
+            for r in rows
+        )
+        refused = sum(
+            r["top_distance"] is None or r["top_distance"] > ceiling or vocab_refuses(r)
+            for r in off_topic
         )
         sweep.append(
             {
@@ -297,6 +494,7 @@ async def run(
     max_chunks: int,
     save: Path | None,
     min_recall5: float | None,
+    show: set[str] | None = None,
 ) -> int:
     golden = load_golden()
     source = golden["source"]
@@ -351,7 +549,23 @@ async def run(
                     context,
                     item.get("facts"),
                 )
+                row["term_counts"] = await term_chunk_counts(
+                    session, question_terms(item["question"])
+                )
                 per_item.append({"id": item["id"], "question": item["question"], **row})
+                if show and ("all" in show or item["id"] in show):
+                    # show the chunks the model would read, then the raw ranking
+                    print(
+                        describe_retrieval(
+                            item["id"],
+                            item["question"],
+                            results,
+                            source,
+                            item["pages"],
+                            item.get("facts"),
+                            limit=settings.top_k,
+                        )
+                    )
 
             for item in golden.get("off_topic", []):
                 results = await ask(item["question"])
@@ -360,8 +574,23 @@ async def run(
                         "id": item["id"],
                         "question": item["question"],
                         **score_off_topic(results, settings.max_distance),
+                        "term_counts": await term_chunk_counts(
+                            session, question_terms(item["question"])
+                        ),
                     }
                 )
+                if show and ("all" in show or item["id"] in show):
+                    print(
+                        describe_retrieval(
+                            item["id"],
+                            item["question"],
+                            results,
+                            source,
+                            None,
+                            None,
+                            limit=settings.top_k,
+                        )
+                    )
     finally:
         await ollama.close()
 
@@ -373,6 +602,25 @@ async def run(
     )
     print_report(per_item, off_topic, summary, label)
     print_threshold(sweep, settings.max_distance)
+    ans_sweep = answerability_sweep(
+        [r["term_counts"] for r in per_item],
+        [(r["term_counts"], r["refused"]) for r in off_topic],
+    )
+    combined = combined_sweep(
+        per_item,
+        off_topic,
+        settings.answerability_min_chunks,
+        settings.answerability_min_unknown,
+    )
+    print_answerability(
+        per_item,
+        off_topic,
+        ans_sweep,
+        settings.answerability_min_chunks,
+        combined,
+        settings.answerability_min_unknown,
+        settings.max_distance,
+    )
 
     if save:
         save.parent.mkdir(parents=True, exist_ok=True)
@@ -384,6 +632,8 @@ async def run(
                     "items": per_item,
                     "off_topic": off_topic,
                     "sweep": sweep,
+                    "answerability": ans_sweep,
+                    "combined": combined,
                 },
                 indent=2,
             ),
@@ -417,6 +667,12 @@ if __name__ == "__main__":
         "--save", type=Path, help="write the full results to this JSON file"
     )
     parser.add_argument(
+        "--show",
+        action="append",
+        metavar="ID",
+        help="print the retrieved chunks for this question id (repeatable; 'all' = every question)",
+    )
+    parser.add_argument(
         "--min-recall5",
         type=float,
         help="exit 1 if mean recall@5 is below this (for use as a gate)",
@@ -431,6 +687,7 @@ if __name__ == "__main__":
                 args.max_chunks,
                 args.save,
                 args.min_recall5,
+                set(args.show) if args.show else None,
             )
         )
     )

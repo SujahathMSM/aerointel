@@ -293,8 +293,9 @@ stream is a fixed sequence of events, each with a one-line JSON payload:
 
 | Event | Payload | When |
 |---|---|---|
-| `meta` | `question`, `refused`, `refusal_message`, `chunks` (the sources), `prompt_version` | Always first. The sources arrive before the answer, so a UI can show them while it types. |
+| `meta` | `question`, `refused`, `refusal_reason`, `refusal_message`, `unknown_terms`, `chunks` (the sources), `prompt_version` | Always first. The sources arrive before the answer, so a UI can show them while it types. |
 | `token` | `{"text": "..."}` | Repeated; concatenate the `text` values to build the answer. |
+| `verification` | same object as `/v1/query`'s `verification` (see [Checking the answer](#checking-the-answer-trust-layer)) | Only when the answer contained figures or citations to check, just before `done`. The text has already been sent, so with `VERIFY_MODE=block` a `blocked: true` means "discard what you received". |
 | `done` | `{"refused": bool, "answer_chars": n}` | Last event on success. |
 | `error` | `{"detail": "Answer generation failed."}` | Only if generation fails after the stream began (the `200` is already sent). No `done` follows; details go to the logs, not the stream. |
 
@@ -383,6 +384,55 @@ followed in the prompt by the chunk after it from the same document.
 - Measure before enabling: `python -m evals.doc_eval --neighbors 1` reports
   `context_hit` (is a right page among what the model would read?) and the
   prompt size.
+
+### Checking the answer (trust layer)
+
+Two checks that need no extra model call, both reported in the `/v1/query`
+response (and, for the stream, in `meta` and a `verification` event).
+
+**Figures must be in the cited passages** (`VERIFY_MODE`, default `flag`). Every
+number in the answer (0.032, 3/8, 1,000, 20-25) is looked up in the passages the
+answer cites `[n]`; if it cites nothing valid, in all passages. A figure no cited
+passage contains is listed in `verification.unsupported`; a figure present but with
+another unit ("foot-pounds" for "inch-pounds") in `unit_mismatch`; a `[n]` pointing
+at a block that was never given in `bad_citations`. Numbers the question itself
+contains may be repeated; numbers inside identifiers (`AN960`, `A320`) are ignored.
+
+| `VERIFY_MODE` | Effect |
+|---|---|
+| `off` | no check |
+| `flag` (default) | the answer is returned with the findings |
+| `block` | `/v1/query` withholds an answer that fails: `refused: true`, `refusal_reason: "unverified_numbers"`, the findings in `verification` (here the model *was* called; the answer is discarded afterwards). The stream cannot withdraw text already sent, so it sends `verification` with `blocked: true` |
+
+What it cannot catch: a correctly copied figure from the wrong passage, the wrong
+aircraft or condition, a conversion (0.375 for 3/8, reported on purpose: the prompt
+asks for exact figures), or a wrong number written as a word. A model that
+computes (adds two limits) is flagged too. It is a safety net under the
+reader, not a replacement for reading the cited page.
+
+**Words the documents never use** (`ANSWERABILITY_MODE`, default `off`). The
+distance gate asks whether some chunk is *close* to the question, which is a topic
+test: "repair a carbon fiber propeller blade" is close to a manual about
+propellers. This check looks up each distinctive word of the question ("Airbus",
+"Garmin", "GE90") in the full-text index and lists those found in no stored chunk
+as `unknown_terms`. `flag` only reports them; `refuse` also refuses without
+calling the model (`refusal_reason: "unknown_terms"`). `ANSWERABILITY_MIN_CHUNKS`
+(default 1) is how many chunks must contain a word for it to count as known, and
+`ANSWERABILITY_MIN_UNKNOWN` (default 1) how many unknown words refuse a question.
+
+It is measured, not assumed (`python -m evals.doc_eval` prints the table). On the
+24 + 11 FAA questions: it catches the foreign-vocabulary questions, but both
+aviation questions the distance gate let through (carbon fiber propeller,
+helicopter rotor bolt) use only words the manual contains, so it does not catch them;
+and it wrongly refuses one right question that uses a word the manual does not
+("judging"). Keep it at `off` or `flag` until the golden set is larger.
+
+To see why a question retrieves what it does:
+
+```powershell
+python -m evals.doc_eval --show titanium-oxide-colours    # the chunks, their pages, and where each fact is
+python -m evals.doc_eval --show all
+```
 
 ### Rate limiting (Phase 2)
 
@@ -519,7 +569,9 @@ against a real pgvector service container on every push.
 | `tests/test_pdf_text.py` | Page-number reading, header/footer removal, hyphenation, sentence-bound chunking with overlap, chunks never crossing pages, unreadable/encrypted/scanned PDFs, and real OCR on a scanned page | nothing (OCR test needs tesseract + PyMuPDF, else skipped) |
 | `tests/test_documents.py` | PDF ingestion service (dedup, connection released before embedding, batches, concurrent-upload race, nothing half-stored), the upload endpoint (type, size, scope), page info in search results and prompts, and against real Postgres: duplicate skip, page provenance, cascade delete | Redis (endpoint), Postgres (integration) |
 | `tests/test_context.py` | Which following chunks are planned (budget spread over the hits, no duplicates), widening after the distance gate and before the session is released, refusals untouched, the context-window warning, `num_ctx` sent only when set, and against real Postgres: neighbour order, document boundaries, last chunk | Postgres (integration) |
-| `tests/test_doc_eval.py` | Page-based scoring (hit, rank, reaches-the-prompt, context hit), off-topic refusal, the `MAX_DISTANCE` sweep and suggested ceiling, and the golden file's well-formedness | nothing |
+| `tests/test_verification.py` | Number extraction (decimals, fractions, thousands, ranges, units, identifiers), a faithful answer passing, one altered digit or unit caught, citations, question echo, `flag`/`block`/`off` through `answer_question`, and the `/v1/query` response shape | Redis for the endpoint tests |
+| `tests/test_answerability.py` | Which question words are tested, spelling variants, the word counts against real Postgres (invented words), and `prepare_answer`: `refuse` never builds a prompt, `flag` reports, `off` never looks, a question the distance gate refused is not checked | Postgres (integration) |
+| `tests/test_doc_eval.py` | Page-based scoring (hit, rank, reaches-the-prompt, context hit), off-topic refusal, the `MAX_DISTANCE` sweep and suggested ceiling, the answerability sweep and combined sweep, the `--show` text, and the golden file's well-formedness | nothing |
 | `tests/test_eval_metrics.py` | Eval metric math (recall@k, MRR, aggregation) + golden-set well-formedness | nothing |
 
 ## Retrieval evals (the scoreboard)
@@ -588,19 +640,34 @@ sentence that answers the question: a hit can stop mid-section. For each questio
 the report counts how many of its `facts` appear in the chunks the model would
 read, so `--neighbors 1` can be shown to help (or not) instead of assumed.
 
-**First live results** (AC 43.13-1B, 24 questions, 2026-10-15, taken before the
-facts check and the aviation off-topic questions existed):
+**Live results** (AC 43.13-1B, 24 questions + 11 off-topic, 2026-10-16, Windows, local
+Ollama):
 
-| Run | recall@1 | recall@3 | recall@5 | MRR |
-|---|---|---|---|---|
-| vector (`--retriever vector`) | 0.875 | 1.000 | 1.000 | 0.924 |
-| hybrid (`--retriever hybrid`) | 0.917 | 1.000 | 1.000 | 0.951 |
+| Run | recall@1 | recall@3 | recall@5 | MRR | answer facts in the prompt | prompt, mean / max chars |
+|---|---|---|---|---|---|---|
+| vector | 0.875 | 1.000 | 1.000 | 0.924 | 23 of 24 questions | 3,235 / 5,669 |
+| hybrid (`HYBRID_ENABLED=true`) | 0.917 | 1.000 | 1.000 | 0.951 | 23 of 24 | 3,216 / 5,669 |
+| vector + `--neighbors 1` | 0.875 | 1.000 | 1.000 | 0.924 | 23 of 24 | 5,316 / 8,332 |
 
-The right page passed the `MAX_DISTANCE` gate for 24 of 24 questions, and the 3
-generic off-topic questions were all refused (closest chunk 0.718). The worst right
-answer sat at distance 0.479 against a limit of 0.48, so the limit has almost no
-margin; set it from the sweep after running against the aviation off-topic
-questions. Hybrid moved two questions up a rank and changed nothing else.
+What it showed:
+
+- **Hybrid** moved two questions up a rank and changed nothing else: turn it on.
+- **Context widening** found no benefit on these questions (the same 23 of 24) and
+  grew the prompt by 64%: leave `CONTEXT_NEIGHBORS=0`.
+- **One question misses its answer** (`titanium-oxide-colours`) in all three runs:
+  the retrieved chunk is from the right page, but the answer sentences are in a
+  later chunk of that page and not even `--neighbors 1` reaches them. Page-level
+  recall hides this; `--show titanium-oxide-colours` prints what was retrieved.
+- **`MAX_DISTANCE` has no clean setting.** Every right answer is within 0.479, but
+  two aviation questions the manual cannot answer were answered at 0.48 (a carbon
+  fiber propeller at 0.439 and a helicopter rotor bolt at 0.468) and the other six
+  sit at 0.482-0.574. The sweep's best value (0.42) would refuse 4 of 24 right
+  questions. Distance measures topic, not whether the manual contains the
+  answer, so the limit stays at 0.48 (almost no margin on the right side) and the
+  [checks above](#checking-the-answer-trust-layer) are the second line of defence.
+  The vocabulary check does not fix those two: every word in them occurs somewhere
+  in the manual.
+
 `HYBRID_ENABLED` and `MAX_DISTANCE` are passed through `docker-compose.yml`, so
 set them in `.env` and run `docker compose up -d`.
 

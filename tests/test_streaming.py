@@ -496,3 +496,85 @@ async def test_client_disconnect_stops_generation_and_closes_the_stream(
     assert state["closed"], "generator was left running after the client left"
     # it stopped soon after the hang-up instead of producing forever
     assert state["yielded"] < 50
+
+
+# ---------------------------------------------------------- figure verification
+
+
+def _with_passage(content: str) -> generation.PreparedAnswer:
+    return generation.PreparedAnswer(
+        question="q?",
+        refused=False,
+        chunks=[(_Chunk(1, content, "AC"), 0.12)],
+        system="sys",
+        prompt="prompt",
+        prompt_version="v9",
+    )
+
+
+@pytest.mark.redis
+async def test_stream_reports_a_figure_the_passage_does_not_contain(client, stream_env):
+    fake, state = stream_env
+    state["prepared"] = _with_passage("Torque the nut to 20 inch-pounds.")
+    fake.pieces = ["Torque ", "to 25 ", "inch-pounds [1]."]
+
+    response = await client.post("/v1/query/stream", json={"question": "q?"})
+
+    events = parse_sse(response.text)
+    assert [name for name, _ in events] == [
+        "meta",
+        "token",
+        "token",
+        "token",
+        "verification",
+        "done",
+    ]
+    verification = dict(events)["verification"]
+    assert verification["ok"] is False
+    assert verification["unsupported"] == ["25 inch-pounds"]
+    assert verification["blocked"] is False  # flag mode: nothing to discard
+
+
+@pytest.mark.redis
+async def test_stream_confirms_a_figure_the_passage_contains(client, stream_env):
+    fake, state = stream_env
+    state["prepared"] = _with_passage("Torque the nut to 20 inch-pounds.")
+    fake.pieces = ["Torque to 20 ", "inch-pounds [1]."]
+
+    response = await client.post("/v1/query/stream", json={"question": "q?"})
+
+    verification = dict(parse_sse(response.text))["verification"]
+    assert verification["ok"] is True
+    assert verification["checked"] == 1
+
+
+@pytest.mark.redis
+async def test_stream_in_block_mode_tells_the_client_to_discard(
+    client, stream_env, monkeypatch
+):
+    fake, state = stream_env
+    state["prepared"] = _with_passage("Torque the nut to 20 inch-pounds.")
+    fake.pieces = ["Torque to 25 inch-pounds [1]."]
+    blocking = get_settings().model_copy(update={"verify_mode": "block"})
+    monkeypatch.setattr(generation, "get_settings", lambda: blocking)
+    monkeypatch.setattr(router_module, "get_settings", lambda: blocking)
+
+    response = await client.post("/v1/query/stream", json={"question": "q?"})
+
+    assert dict(parse_sse(response.text))["verification"]["blocked"] is True
+
+
+@pytest.mark.redis
+async def test_stream_with_verification_off_sends_no_verification(
+    client, stream_env, monkeypatch
+):
+    fake, state = stream_env
+    state["prepared"] = _with_passage("Torque the nut to 20 inch-pounds.")
+    fake.pieces = ["Torque to 25 inch-pounds [1]."]
+    off = get_settings().model_copy(update={"verify_mode": "off"})
+    monkeypatch.setattr(generation, "get_settings", lambda: off)
+    monkeypatch.setattr(router_module, "get_settings", lambda: off)
+
+    response = await client.post("/v1/query/stream", json={"question": "q?"})
+
+    assert "verification" not in [name for name, _ in parse_sse(response.text)]

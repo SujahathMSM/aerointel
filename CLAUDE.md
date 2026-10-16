@@ -48,7 +48,7 @@ mypy app                   # note: mypy excludes alembic/versions, scripts, test
 # Retrieval eval harness (needs Postgres + sample data; add --retriever/--reranker/--faithfulness to A/B test)
 python -m evals.run_eval
 python -m evals.run_eval --retriever hybrid --reranker crossencoder --faithfulness
-python -m evals.doc_eval [--retriever hybrid] [--neighbors 1]   # real documents, scored by page (needs the FAA manual ingested)
+python -m evals.doc_eval [--retriever hybrid] [--neighbors 1] [--show ID|all]   # real documents, scored by page (needs the FAA manual ingested)
 
 # Embedding version migration (rows are tagged with embedding_model; never silently mix models)
 python scripts/backfill_embeddings.py --dry-run
@@ -132,6 +132,18 @@ an answer and never touches the DB later. `LLM_NUM_CTX` is sent to Ollama as
 `num_ctx`; Ollama silently truncates over-long prompts, so
 `warn_if_prompt_may_not_fit()` logs when one is near the window. Off by default;
 enable only after `python -m evals.doc_eval --neighbors 1`.
+
+Trust layer (`services/verification.py`, `services/answerability.py`): after the
+model answers, `verify_answer()` checks every number in the answer against the
+passages it cites (`VERIFY_MODE` off|flag|block; deterministic, no model call) and
+`prepare_answer()` can list question words found in no stored chunk
+(`ANSWERABILITY_MODE` off|flag|refuse, a lookup in the `tsv` GIN index). Both
+are reported in `QueryResponse` (`verification`, `unknown_terms`, `refusal_reason`).
+`block` withholds the answer only on `/v1/query`; the stream sends a `verification`
+event after the text, because the text is already out. The word check runs after
+the distance gate and before the commit, like context widening. Neither fixes the
+"near-topic" question (every word occurs in the manual); that is still the
+prompt's rule 2. Don't turn `refuse` on without reading the `doc_eval` table.
 
 Tests: `tests/auth_helpers.py` configures auth env (and per-process Redis key
 prefixes, so runs never interfere) before `app` loads; `conftest.py` provides an

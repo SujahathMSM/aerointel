@@ -38,18 +38,25 @@ from app.core.logging import get_logger
 from app.core.sse import format_event
 from app.schemas.documents import DocumentResponse
 from app.schemas.ingest import IngestRequest, IngestResponse
-from app.schemas.query import QueryRequest, QueryResponse, RetrievedChunk
+from app.schemas.query import (
+    QueryRequest,
+    QueryResponse,
+    RetrievedChunk,
+    VerificationOut,
+)
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services.documents import ingest_pdf
 from app.services.generation import (
-    NO_CONTEXT_MESSAGE,
     answer_question,
     prepare_answer,
+    refusal_message,
     stream_answer,
+    verify_prepared,
 )
 from app.services.ingestion import ingest_chunk
 from app.services.pdf_text import PdfError
 from app.services.pipeline import retrieve
+from app.services.verification import Verification
 
 # Every /v1 route first proves who is calling (401 if not), then spends a
 # rate-limit token from that caller's bucket; each route then checks its
@@ -62,6 +69,29 @@ router = APIRouter(
     dependencies=[Depends(authenticate), Depends(enforce_rate_limit)],
 )
 logger = get_logger(__name__)
+
+
+def _verification_out(
+    v: Verification | None, blocked: bool = False
+) -> VerificationOut | None:
+    if v is None:
+        return None
+    return VerificationOut(
+        ok=v.ok,
+        checked=v.checked,
+        cited=v.cited,
+        unsupported=v.unsupported,
+        unit_mismatch=v.unit_mismatch,
+        bad_citations=v.bad_citations,
+        blocked=blocked,
+    )
+
+
+def _refusal_text(reason, unknown_terms, verification) -> str:
+    figures = (
+        [*verification.unsupported, *verification.unit_mismatch] if verification else []
+    )
+    return refusal_message(reason, unknown_terms, figures, get_settings().max_distance)
 
 
 def _to_retrieved(chunk, distance: float) -> RetrievedChunk:
@@ -85,14 +115,20 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
     """Grounded answer with [n] citations, or a structural refusal."""
     result = await answer_question(session, ollama, body.question, body.top_k)
 
-    settings = get_settings()
-
     if result.refused:
         return QueryResponse(
             question=result.question,
             refused=True,
-            refusal_message=NO_CONTEXT_MESSAGE.format(ceiling=settings.max_distance),
+            refusal_reason=result.refusal_reason,
+            refusal_message=_refusal_text(
+                result.refusal_reason, result.unknown_terms, result.verification
+            ),
+            unknown_terms=result.unknown_terms,
             chunks=[_to_retrieved(c, d) for c, d in result.chunks],
+            prompt_version=result.prompt_version,
+            verification=_verification_out(result.verification, blocked=True)
+            if result.verification
+            else None,
         )
 
     logger.info(
@@ -107,6 +143,8 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
         answer=result.answer,
         chunks=[_to_retrieved(c, d) for c, d in result.chunks],
         prompt_version=result.prompt_version,
+        unknown_terms=result.unknown_terms,
+        verification=_verification_out(result.verification),
     )
 
 
@@ -122,14 +160,21 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
     bad request, missing scope, rate limit or retrieval failure is an ordinary
     HTTP error. After that the stream is:
 
-    - `meta`  -- question, refused, refusal_message, chunks (the sources),
-                 prompt_version. Always first.
+    - `meta`  -- question, refused, refusal_reason, refusal_message,
+                 unknown_terms, chunks (the sources), prompt_version.
+                 Always first.
     - `token` -- `{"text": "..."}`, repeated; concatenate to build the answer.
+    - `verification` -- only when the answer contained figures or citations to
+                 check: the same object as `/v1/query`'s `verification`. The text
+                 is already sent, so with VERIFY_MODE=block `blocked: true` means
+                 "discard what you received". Absent when there was nothing to check.
     - `done`  -- `{"refused": bool, "answer_chars": n}`. Always last on success.
     - `error` -- `{"detail": "..."}` if generation fails after the stream began
                  (the status line was already sent); no `done` follows.
 
     A refusal is `meta` (refused=true) then `done`: the model is never called.
+    (The exception is a figure-check withhold, which is decided after generation
+    and so cannot happen on the stream: see `verification`.)
     """
     settings = get_settings()
     prepared = await prepare_answer(session, ollama, body.question, body.top_k)
@@ -137,14 +182,16 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
     meta = QueryResponse(
         question=prepared.question,
         refused=prepared.refused,
+        refusal_reason=prepared.refusal_reason,
         refusal_message=(
-            NO_CONTEXT_MESSAGE.format(ceiling=settings.max_distance)
+            _refusal_text(prepared.refusal_reason, prepared.unknown_terms, None)
             if prepared.refused
             else None
         ),
+        unknown_terms=prepared.unknown_terms,
         chunks=[_to_retrieved(c, d) for c, d in prepared.chunks],
         prompt_version=prepared.prompt_version,
-    ).model_dump(exclude={"answer"})
+    ).model_dump(exclude={"answer", "verification"})
 
     async def events() -> AsyncIterator[str]:
         started = time.monotonic()
@@ -156,11 +203,21 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
                 outcome = "refused"
                 yield format_event("done", {"refused": True, "answer_chars": 0})
                 return
+            pieces: list[str] = []
             async with aclosing(stream_answer(ollama, prepared)) as tokens:
                 async for piece in tokens:
                     chars += len(piece)
+                    pieces.append(piece)
                     yield format_event("token", {"text": piece})
             outcome = "completed"
+            # The text is already on the wire, so a failed check cannot withdraw
+            # it; the client is told, and in "block" mode must discard it.
+            verification = verify_prepared(prepared, "".join(pieces))
+            if verification and (verification.checked or verification.bad_citations):
+                blocked = not verification.ok and settings.verify_mode == "block"
+                out = _verification_out(verification, blocked=blocked)
+                assert out is not None
+                yield format_event("verification", out.model_dump())
             yield format_event("done", {"refused": False, "answer_chars": chars})
         except (asyncio.CancelledError, GeneratorExit):
             outcome = "client_disconnected"

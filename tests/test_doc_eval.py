@@ -7,14 +7,18 @@ broken scoreboard cannot hide a retrieval regression.
 """
 
 from evals.doc_eval import (
+    answerability_sweep,
     best_ceiling,
+    combined_sweep,
     count_facts,
+    describe_retrieval,
     is_hit,
     load_golden,
     score_item,
     score_off_topic,
     summarise,
     threshold_sweep,
+    unknown_words,
 )
 from evals.metrics import hit_recall_at_k, hit_reciprocal_rank
 
@@ -227,3 +231,95 @@ def test_the_golden_file_is_well_formed():
 
     # generic off-topic questions plus aviation ones the manual does not cover
     assert len(golden["off_topic"]) >= 10
+
+
+# ------------------------------------------------- answerability + --show
+
+
+def test_unknown_words_depend_on_how_many_chunks_are_required():
+    counts = {"airbus": 0, "helicopter": 1, "cable": 40}
+    assert unknown_words(counts, 1) == ["airbus"]
+    assert unknown_words(counts, 2) == ["airbus", "helicopter"]
+
+
+def test_answerability_sweep_counts_wrong_refusals_and_catches():
+    valid = [{"cable": 9}, {"judging": 0, "fabric": 4}]
+    off = [
+        ({"airbus": 0, "a320": 0}, False),  # the distance gate let it through
+        ({"boeing": 0}, False),
+        ({"capital": 0}, True),  # the gate already refused it: not counted
+        ({"carbon": 50, "propeller": 120}, False),  # every word occurs: not caught
+    ]
+    rows = {
+        (r["min_chunks"], r["min_unknown"]): r for r in answerability_sweep(valid, off)
+    }
+    strict = rows[(1, 1)]
+    assert (strict["valid_refused"], strict["valid_total"]) == (1, 2)
+    assert (strict["caught"], strict["gate_missed"]) == (2, 3)
+    relaxed = rows[(1, 2)]
+    assert relaxed["valid_refused"] == 0
+    assert relaxed["caught"] == 1  # only the question with two unknown words
+
+
+def _row(distance, **counts):
+    return {
+        "best_hit_distance": distance,
+        "top_distance": distance,
+        "term_counts": counts or {"cable": 5},
+    }
+
+
+def test_the_vocabulary_rule_makes_a_looser_ceiling_safe():
+    right = [_row(0.30), _row(0.479)]
+    off = [
+        _row(0.45, airbus=0),  # foreign vocabulary, nearer than the worst right answer
+        _row(0.80, cake=0),
+    ]
+    plain = best_ceiling(threshold_sweep(right, off, low=0.40, high=0.62))
+    assert plain["reaches_prompt"] == 0.5  # to refuse the Airbus question, lose one
+
+    combined = best_ceiling(combined_sweep(right, off, 1, 1))
+    assert combined["reaches_prompt"] == 1.0
+    assert combined["low"] == 0.48 and combined["high"] == 0.62
+
+
+def test_the_vocabulary_rule_also_costs_right_questions_that_use_a_foreign_word():
+    right = [_row(0.30), _row(0.40, judging=0)]
+    off = [_row(0.80, cake=0)]
+    best = best_ceiling(combined_sweep(right, off, 1, 1))
+    assert best["reaches_prompt"] == 0.5
+    relaxed = best_ceiling(combined_sweep(right, off, 1, 2))
+    assert relaxed["reaches_prompt"] == 1.0
+
+
+class ShownChunk(Chunk):
+    def __init__(self, cid, page, content, label=None, index=0):
+        super().__init__(page, content=content)
+        self.id = cid
+        self.page_label = label
+        self.chunk_index = index
+
+
+def test_show_marks_the_right_page_and_says_where_each_fact_is():
+    found = [
+        (
+            ShownChunk(
+                11, 349, "Noble metal coatings... clean with magnesium.", "6-42"
+            ),
+            0.456,
+        ),
+        (ShownChunk(12, 100, "Unrelated rivet text."), 0.50),
+    ]
+    text = describe_retrieval(
+        "titanium",
+        "Why does titanium change colour?",
+        found,
+        SOURCE,
+        [349],
+        ["blue oxide coating", "clean with magnesium"],
+    )
+    assert "expected PDF page(s): [349]" in text
+    assert "#1 chunk 11 PDF p.349 (6-42)" in text and "<- right page" in text
+    assert text.count("<- right page") == 1
+    assert "fact 'blue oxide coating': NOT in any shown chunk" in text
+    assert "fact 'clean with magnesium': in result 1" in text

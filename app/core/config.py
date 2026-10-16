@@ -51,6 +51,25 @@ class Settings(BaseSettings):
     # may not fit is logged. Raise this (e.g. 8192) before raising the two above.
     llm_num_ctx: int | None = None
 
+    # Answerability: words in the question that appear in no stored chunk
+    # ("Airbus", "Garmin") mean the documents cannot answer it, however close
+    # the nearest chunk looks. "off" = skip the check; "flag" = report the
+    # unknown words in the response; "refuse" = also refuse without calling the
+    # model. Off by default, like the other retrieval switches. A word counts as
+    # known when at least `answerability_min_chunks` chunks contain it. Measure
+    # with `python -m evals.doc_eval` before choosing "refuse".
+    answerability_mode: Literal["off", "flag", "refuse"] = "off"
+    answerability_min_chunks: int = 1
+    # "refuse" needs at least this many unknown words. 1 is strictest; 2 spares
+    # a question that merely uses one word the manual does not (measure first).
+    answerability_min_unknown: int = 1
+
+    # Verification of the answer's numbers against the passages it cites.
+    # "flag" = report numbers/units the cited passages do not contain;
+    # "block" = also withhold the answer (non-streaming endpoint only; a stream
+    # has already been sent, so it gets a `verification` event instead).
+    verify_mode: Literal["off", "flag", "block"] = "flag"
+
     # Prompt registry (Phase 1): prompts live as versioned files under
     # app/prompts/. None = use the newest version on disk; pin a version
     # ("v1") to freeze behavior while a newer one is being evaluated.
