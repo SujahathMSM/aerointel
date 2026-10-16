@@ -37,6 +37,9 @@ os.environ["VERIFY_MODE"] = "flag"
 os.environ["ANSWERABILITY_MODE"] = "off"
 os.environ["ANSWERABILITY_MIN_CHUNKS"] = "1"
 os.environ["ANSWERABILITY_MIN_UNKNOWN"] = "1"
+# Same for chunking: a developer re-ingesting with CHUNK_BY_PARAGRAPH=true must
+# not change what the ingest tests chunk. Tests that want it pass it explicitly.
+os.environ["CHUNK_BY_PARAGRAPH"] = "false"
 
 from app.core.auth import create_access_token
 from app.core.config import get_settings

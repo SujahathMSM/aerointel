@@ -98,6 +98,11 @@ class FakeSession:
     async def rollback(self):
         self.events.append("rollback")
 
+    async def execute(self, statement):
+        # the only statement the service runs itself: deleting a replaced copy
+        self.events.append("delete")
+        self.executed = getattr(self, "executed", []) + [statement]
+
 
 @pytest.fixture
 def no_existing(monkeypatch):
@@ -225,6 +230,82 @@ async def test_a_concurrent_upload_of_the_same_file_is_treated_as_a_duplicate(
     assert result.document_id == 5
     assert "rollback" in events
     assert not any(isinstance(o, DocumentChunk) for o in session.added)
+
+
+def _stored(document_id: int = 7) -> Document:
+    return Document(
+        id=document_id, filename="old.pdf", title="Old", content_hash="x",
+        byte_size=1, page_count=9, chunk_count=30, ocr_pages=0,
+    )  # fmt: skip
+
+
+async def test_replace_re_ingests_and_deletes_the_old_copy_in_the_same_write(
+    monkeypatch,
+):
+    async def lookup(session, content_hash):
+        return _stored(7)
+
+    monkeypatch.setattr(documents, "find_document_by_hash", lookup)
+    events: list[str] = []
+    session, ollama = FakeSession(events), FakeOllama(events)
+
+    result = await ingest_pdf(session, ollama, sample_pdf(), "a.pdf", replace=True)
+
+    assert result.duplicate is False
+    assert result.replaced_document_id == 7
+    assert result.document_id == 41  # a new row, not the old id
+    assert ollama.batches  # it was embedded again
+    # connection released first, embedding before any write, and the delete in
+    # the same transaction as the new rows (flush ... commit)
+    assert events[0] == "commit"
+    assert events[-3:] == ["delete", "flush", "commit"]
+    assert "embed" not in events[events.index("delete") :]
+    compiled = session.executed[0].compile(compile_kwargs={"literal_binds": True})
+    assert "DELETE FROM documents" in str(compiled) and "= 7" in str(compiled)
+
+
+async def test_replace_with_nothing_stored_is_a_normal_ingest(no_existing):
+    events: list[str] = []
+    session = FakeSession(events)
+    result = await ingest_pdf(
+        session, FakeOllama(events), sample_pdf(), "a.pdf", replace=True
+    )
+    assert result.replaced_document_id is None
+    assert "delete" not in events
+
+
+def two_paragraph_pdf() -> bytes:
+    """One page, two numbered paragraphs that fit in one chunk together."""
+    sentence = "Inspect the {0} assembly for wear and record the result."
+    return make_pdf(
+        [
+            ["2-1. FIRST TOPIC."]
+            + [sentence.format("brake")] * 5
+            + ["2-2. SECOND TOPIC."]
+            + [sentence.format("pump")] * 5
+        ]
+    )
+
+
+async def test_the_chunking_setting_decides_how_chunks_are_cut(
+    no_existing, monkeypatch
+):
+    session = FakeSession()
+    await ingest_pdf(session, FakeOllama(), two_paragraph_pdf(), "a.pdf")
+    chunks = [o for o in session.added if isinstance(o, DocumentChunk)]
+    assert len(chunks) == 1  # both paragraphs in one chunk
+    assert chunks[0].metadata_["chunking"] == "sentences"
+
+    monkeypatch.setattr(
+        documents,
+        "get_settings",
+        lambda: get_settings().model_copy(update={"chunk_by_paragraph": True}),
+    )
+    session = FakeSession()
+    await ingest_pdf(session, FakeOllama(), two_paragraph_pdf(), "a.pdf")
+    chunks = [o for o in session.added if isinstance(o, DocumentChunk)]
+    assert [c.content[:12] for c in chunks] == ["2-1. FIRST T", "2-2. SECOND "]
+    assert {c.metadata_["chunking"] for c in chunks} == {"paragraphs"}
 
 
 async def test_unreadable_pdf_stores_nothing_and_embeds_nothing(no_existing):
@@ -491,6 +572,59 @@ async def test_real_database_ingest_then_duplicate_then_cascade(db_session):
         )
     ).scalar_one()
     assert left == 0
+
+
+async def _chunk_count(session, document_id: int) -> int:
+    return (
+        await session.execute(
+            select(sa.func.count())
+            .select_from(DocumentChunk)
+            .where(DocumentChunk.document_id == document_id)
+        )
+    ).scalar_one()
+
+
+@integration
+async def test_real_database_replace_swaps_the_stored_copy(db_session):
+    pdf = sample_pdf(pages=3, tag="replace")
+    first = await ingest_pdf(db_session, FakeOllama(), pdf, "m.pdf", MARKER_TITLE)
+    second = await ingest_pdf(
+        db_session, FakeOllama(), pdf, "m.pdf", MARKER_TITLE, replace=True
+    )
+
+    assert second.duplicate is False
+    assert second.replaced_document_id == first.document_id
+    assert second.document_id != first.document_id
+    assert await _chunk_count(db_session, first.document_id) == 0  # cascade
+    assert await _chunk_count(db_session, second.document_id) == second.chunks > 0
+    stored = (
+        await db_session.execute(
+            select(Document.id).where(
+                Document.content_hash == hashlib.sha256(pdf).hexdigest()
+            )
+        )
+    ).scalars()
+    assert list(stored) == [second.document_id]
+
+
+@integration
+async def test_real_database_failed_replace_keeps_the_old_copy(db_session):
+    pdf = sample_pdf(pages=3, tag="replace-fails")
+    first = await ingest_pdf(db_session, FakeOllama(), pdf, "m.pdf", MARKER_TITLE)
+
+    class Failing(FakeOllama):
+        async def embed(self, texts):
+            raise RuntimeError("ollama is down")
+
+    with pytest.raises(RuntimeError):
+        await ingest_pdf(
+            db_session, Failing(), pdf, "m.pdf", MARKER_TITLE, replace=True
+        )
+    await db_session.rollback()
+
+    assert await _chunk_count(db_session, first.document_id) == first.chunks
+    again = await ingest_pdf(db_session, FakeOllama(), pdf, "m.pdf", MARKER_TITLE)
+    assert again.duplicate is True and again.document_id == first.document_id
 
 
 @integration

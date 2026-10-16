@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePath
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,7 @@ from app.core.logging import get_logger
 from app.db.models import Document, DocumentChunk
 from app.llm.ollama import OllamaClient
 from app.services.ocr import ocr_pages
-from app.services.pdf_text import PdfError, chunk_pages, extract_pages
+from app.services.pdf_text import PdfError, chunk_pages, chunking_name, extract_pages
 
 logger = get_logger(__name__)
 
@@ -32,9 +32,13 @@ class IngestedDocument:
     # True when this exact file (same bytes) was already ingested: nothing new
     # was embedded or stored, and the numbers describe the existing document.
     duplicate: bool
+    # With replace=True: the id of the stored copy that this ingest deleted.
+    replaced_document_id: int | None = None
 
 
-def _summary(document: Document, duplicate: bool) -> IngestedDocument:
+def _summary(
+    document: Document, duplicate: bool, replaced: int | None = None
+) -> IngestedDocument:
     return IngestedDocument(
         document_id=document.id,
         title=document.title,
@@ -43,6 +47,7 @@ def _summary(document: Document, duplicate: bool) -> IngestedDocument:
         chunks=document.chunk_count,
         ocr_pages=document.ocr_pages,
         duplicate=duplicate,
+        replaced_document_id=replaced,
     )
 
 
@@ -69,6 +74,7 @@ async def ingest_pdf(
     filename: str,
     title: str | None = None,
     progress: Callable[[int, int], None] | None = None,
+    replace: bool = False,
 ) -> IngestedDocument:
     """Turn one PDF into searchable chunks that remember their page.
 
@@ -76,6 +82,11 @@ async def ingest_pdf(
     clean the text (OCR for blank pages if enabled), cut it into page-bound
     chunks, embed them in batches, then store the document and all its chunks
     in a single transaction -- a file is either fully ingested or not at all.
+
+    `replace=True` re-ingests a file that is already stored (to apply new
+    chunking settings): the old copy is deleted, chunks and all, in the same
+    transaction that stores the new one, so a failure part-way leaves the old
+    copy in place. Its document id changes.
 
     The database connection is released before the slow part (reading,
     embedding): a 700-page manual takes minutes, and a pooled connection held
@@ -90,9 +101,10 @@ async def ingest_pdf(
 
     existing = await find_document_by_hash(session, content_hash)
     await session.commit()  # release the pooled connection
-    if existing is not None:
+    if existing is not None and not replace:
         logger.info("document already ingested", document_id=existing.id)
         return _summary(existing, duplicate=True)
+    replaced = existing.id if existing is not None else None
 
     pages = await asyncio.to_thread(
         extract_pages,
@@ -100,7 +112,13 @@ async def ingest_pdf(
         ocr_pages if settings.ocr_enabled else None,
         settings.ocr_language,
     )
-    chunks = chunk_pages(pages, settings.chunk_max_chars, settings.chunk_overlap_chars)
+    paragraphs = settings.chunk_by_paragraph
+    chunks = chunk_pages(
+        pages,
+        settings.chunk_max_chars,
+        settings.chunk_overlap_chars,
+        paragraphs=paragraphs,
+    )
     if not chunks:
         raise PdfError("No usable text was found in the PDF.")
 
@@ -121,6 +139,10 @@ async def ingest_pdf(
         chunk_count=len(chunks),
         ocr_pages=sum(1 for page in pages if page.ocr),
     )
+    if replaced is not None:
+        # Chunks go with it (ON DELETE CASCADE); the new copy is stored below in
+        # this same transaction, so the hash is never missing from the table.
+        await session.execute(delete(Document).where(Document.id == replaced))
     session.add(document)
     try:
         await session.flush()
@@ -136,7 +158,11 @@ async def ingest_pdf(
     session.add_all(
         DocumentChunk(
             content=chunk.text,
-            metadata_={"source": title, "filename": filename},
+            metadata_={
+                "source": title,
+                "filename": filename,
+                "chunking": chunking_name(paragraphs),
+            },
             embedding=embedding,
             embedding_model=settings.embedding_model,
             document_id=document.id,
@@ -153,5 +179,7 @@ async def ingest_pdf(
         pages=len(pages),
         chunks=len(chunks),
         ocr_pages=document.ocr_pages,
+        chunking=chunking_name(paragraphs),
+        replaced_document_id=replaced,
     )
-    return _summary(document, duplicate=False)
+    return _summary(document, duplicate=False, replaced=replaced)

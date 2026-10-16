@@ -325,6 +325,7 @@ alembic upgrade head                                   # once: adds the document
 .\scripts\fetch_sample_docs.ps1                        # free FAA manual (AC 43.13-1B, 756 pages)
 python scripts\ingest_pdfs.py data\aviation --dry-run   # check how it reads, stores nothing
 python scripts\ingest_pdfs.py data\aviation             # read, chunk, embed, store
+python scripts\ingest_pdfs.py data\aviation --replace   # re-ingest stored files with the current chunking
 ```
 
 Or over HTTP, for smaller files (the request stays open until embedding is done):
@@ -347,10 +348,22 @@ What happens to a file:
 4. **Chunking.** Each page is cut into chunks of about `CHUNK_MAX_CHARS`
    (1200) characters ending on sentence boundaries, with `CHUNK_OVERLAP_CHARS`
    (150) repeated at the start of the next one. A chunk never crosses a page, so
-   every citation names exactly one page.
+   every citation names exactly one page. With `CHUNK_BY_PARAGRAPH=true` (off by
+   default) a chunk also starts at each numbered paragraph heading ("6-181.
+   TITANIUM AND TITANIUM ALLOYS.", "SECTION 11."), overlap never crosses a
+   heading, and a last chunk that would add under 200 new characters is folded
+   into the one before. Figure and table captions ("FIGURE 11-30."), references
+   ("Figures 11-11 through 11-13.") and table-of-contents lines are not headings,
+   and a heading within 200 characters of the previous cut stays with it, so a
+   section title keeps its first paragraph. Each chunk records how it was cut
+   (`metadata.chunking`: `sentences` or `paragraphs`).
 5. **Storing.** All chunks are embedded in batches, then the document and its
    chunks are written in one transaction: a file is fully ingested or not at all.
    The database connection is released before the slow reading and embedding.
+   `ingest_pdfs.py --replace` re-ingests a file that is already stored (to apply
+   new chunking settings): the old copy and its chunks are deleted in that same
+   transaction, so a failed re-ingest leaves the old copy in place. The document
+   gets a new id.
 
 Each stored chunk records its document, its position, the PDF page and the
 printed page. `/v1/query` and `/v1/search` return them (`document_id`, `page`,
@@ -568,8 +581,8 @@ against a real pgvector service container on every push.
 | `tests/test_search_synthetic.py` | pgvector ranks by meaning using orthogonal synthetic vectors — no real embedding model needed to prove the math | Postgres only (CI) |
 | `tests/test_rag_local.py` | Full grounding contract with real Ollama: matched question → cited answer, unmatched question → refusal | Ollama + Postgres |
 | `tests/test_streaming.py` | Ollama stream parsing (ordering, whitespace trimming equals `chat()`, error lines, retry/circuit rules, connection closed on early stop); SSE format; the `/v1/query/stream` event sequence, refusal never reaching the model, in-band errors that don't leak, auth/scope/validation, and client disconnect ending generation (ASGI 2.3 and 2.4 styles) | Redis for the endpoint tests |
-| `tests/test_pdf_text.py` | Page-number reading, header/footer removal, hyphenation, sentence-bound chunking with overlap, chunks never crossing pages, unreadable/encrypted/scanned PDFs, and real OCR on a scanned page | nothing (OCR test needs tesseract + PyMuPDF, else skipped) |
-| `tests/test_documents.py` | PDF ingestion service (dedup, connection released before embedding, batches, concurrent-upload race, nothing half-stored), the upload endpoint (type, size, scope), page info in search results and prompts, and against real Postgres: duplicate skip, page provenance, cascade delete | Redis (endpoint), Postgres (integration) |
+| `tests/test_pdf_text.py` | Page-number reading, header/footer removal, hyphenation, sentence-bound chunking with overlap, paragraph-aware chunking (the real page 349 titanium case, captions and references that are not headings, sliver folding), chunks never crossing pages, unreadable/encrypted/scanned PDFs, and real OCR on a scanned page | nothing (OCR test needs tesseract + PyMuPDF, else skipped) |
+| `tests/test_documents.py` | PDF ingestion service (dedup, connection released before embedding, batches, concurrent-upload race, nothing half-stored, the chunking setting reaching the chunker, `--replace` deleting the old copy in the same write), the upload endpoint (type, size, scope), page info in search results and prompts, and against real Postgres: duplicate skip, page provenance, cascade delete, replace swapping the stored copy, a failed replace keeping the old one | Redis (endpoint), Postgres (integration) |
 | `tests/test_context.py` | Which following chunks are planned (budget spread over the hits, no duplicates), widening after the distance gate and before the session is released, refusals untouched, the context-window warning, `num_ctx` sent only when set, and against real Postgres: neighbour order, document boundaries, last chunk | Postgres (integration) |
 | `tests/test_verification.py` | Number extraction (decimals, fractions, thousands, ranges, units, identifiers), a faithful answer passing, one altered digit or unit caught, citations, question echo, `flag`/`block`/`off` through `answer_question`, and the `/v1/query` response shape | Redis for the endpoint tests |
 | `tests/test_answerability.py` | Which question words are tested, spelling variants, the word counts against real Postgres (invented words), and `prepare_answer`: `refuse` never builds a prompt, `flag` reports, `off` never looks, a question the distance gate refused is not checked | Postgres (integration) |
@@ -656,10 +669,20 @@ What it showed:
 - **Hybrid** moved two questions up a rank and changed nothing else: turn it on.
 - **Context widening** found no benefit on these questions (the same 23 of 24) and
   grew the prompt by 64%: leave `CONTEXT_NEIGHBORS=0`.
-- **One question misses its answer** (`titanium-oxide-colours`) in all three runs:
-  the retrieved chunk is from the right page, but the answer sentences are in a
-  later chunk of that page and not even `--neighbors 1` reaches them. Page-level
-  recall hides this; `--show titanium-oxide-colours` prints what was retrieved.
+- **One question misses its answer** (`titanium-oxide-colours`) in all three runs.
+  `--show` found why: the answer chunk is retrieved (rank 2) but at distance 0.486,
+  just over the gate, because its first 40% is the copper paragraph before
+  "6-181. TITANIUM". The chunk that ranks first (0.456) is a 119-character sliver
+  after it (one overlap sentence and "Acceptable methods for corrosion removal
+  are:"), and `--neighbors 1` only adds the chunk *after* a hit. Across the manual,
+  617 of 789 paragraph headings start in the middle of a chunk and 70 chunks are
+  such slivers. `CHUNK_BY_PARAGRAPH=true` (above) cuts at the headings: offline on
+  the same manual, 156 headings start mid-chunk (each within 200 characters of the
+  previous cut, mostly section titles), 15 chunks add under 200 new characters
+  (short paragraphs at the end of a page), the titanium paragraph is one 798-char
+  chunk, and every golden fact still lies whole in one chunk on its page
+  (36 of 36). 1,749 chunks instead of 1,589. Whether it helps retrieval needs a
+  live re-ingest and `doc_eval` run.
 - **`MAX_DISTANCE` has no clean setting.** Every right answer is within 0.479, but
   two aviation questions the manual cannot answer were answered at 0.48 (a carbon
   fiber propeller at 0.439 and a helicopter rotor bolt at 0.468) and the other six

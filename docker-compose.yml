@@ -51,6 +51,8 @@ services:
       AUTH_CLIENTS: ${AUTH_CLIENTS:-}
       # Read text from scanned PDF pages (needs the image built with INSTALL_OCR=true).
       OCR_ENABLED: ${OCR_ENABLED:-false}
+      # Start a chunk at each numbered paragraph heading (affects new ingests only).
+      CHUNK_BY_PARAGRAPH: ${CHUNK_BY_PARAGRAPH:-false}
       # Retrieval switches. Measure a change with python -m evals.doc_eval first.
       HYBRID_ENABLED: ${HYBRID_ENABLED:-false}
       MAX_DISTANCE: ${MAX_DISTANCE:-0.48}

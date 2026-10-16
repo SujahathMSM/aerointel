@@ -13,9 +13,11 @@ from app.services.pdf_text import (
     PdfNoTextError,
     chunk_pages,
     chunk_text,
+    chunking_name,
     extract_pages,
     find_page_label,
     join_lines,
+    split_paragraphs,
     split_sentences,
     strip_repeated_edges,
 )
@@ -206,6 +208,159 @@ def test_nearly_empty_pages_make_no_chunks():
     pages = [PageText(1, None, "Fig 3."), PageText(2, None, "Real content " * 20)]
     chunks = chunk_pages(pages)
     assert {c.page for c in chunks} == {2}
+
+
+# ------------------------------------------------- chunking by paragraph
+
+# The end of PDF page 349 of AC 43.13-1B CHG 1 (public domain), exactly as the
+# text layer reads. Cut by sentences only, the titanium paragraph shared a chunk
+# with the copper text before it (diluted, distance 0.486, just over the 0.48
+# gate) and its last sentence became a 119-character sliver that ranked first
+# but held no answer -- the `titanium-oxide-colours` miss in doc_eval.
+PAGE_349_TAIL = (
+    "c. Serious copper corrosion is evident by the accumulation of green-to-blue "
+    "copper salts on the corroded part. Remove these products mechanically using a "
+    "stiff bristle brush, brass wire brush, 400-grit abrasive paper, or bead blast "
+    "with glass beads (Specification MIL-G-9954, size 13). Air pressure when blasting"
+    " should be 20–30 psi for direct pressure machines. Do not bead blast braided "
+    "copper flexible lines. Reapply a surface coating over the reworked area. Chromic"
+    " acid treatment will tend to remove the residual corrosion products. WARNING: "
+    "Brushing, sanding, and abrasive blasting of copper and copper alloys can be "
+    "dangerous due to the creation of toxic airborne particles. Take necessary "
+    "precautions to ensure safety. 6-181. TITANIUM AND TITANIUM ALLOYS. Titanium and "
+    "titanium alloys are highly corrosion resistant because an oxide film forms on "
+    "their surfaces upon contact with air. a. When titanium is heated, different "
+    "oxides having different colors form on the surface. A blue oxide coating will "
+    "form at 700–800 °F, a purple oxide at 800–950 °F, and a gray or black oxide at "
+    "1,000 °F or higher. These coatings are protective discolorations and should not "
+    "be removed. b. Corrosive attack on titanium surfaces is difficult to detect. It "
+    "may show deterioration from the presence of salt deposits and metal impurities "
+    "at elevated temperatures, so periodic removal of surface deposits is required. "
+    "However, if corrosion develops on titanium, it usually occurs as pitting. "
+    "Acceptable methods for corrosion removal are:"
+)
+
+
+def _paragraph(number: str, title: str, topic: str, sentences: int = 6) -> str:
+    body = " ".join(
+        f"Step {i} of the {topic} procedure is described here in full."
+        for i in range(sentences)
+    )
+    return f"{number}. {title}. {body}"
+
+
+def test_the_titanium_paragraph_gets_a_chunk_of_its_own():
+    by_sentence = chunk_text(PAGE_349_TAIL, 1200, 150)
+    assert any("copper" in c and "TITANIUM" in c for c in by_sentence)  # the old mix
+
+    chunks = chunk_text(PAGE_349_TAIL, 1200, 150, paragraphs=True)
+    answer = [c for c in chunks if "blue oxide coating" in c]
+    assert len(answer) == 1
+    assert answer[0].startswith("6-181. TITANIUM AND TITANIUM ALLOYS.")
+    assert "should not be removed" in answer[0]
+    assert "copper" not in answer[0]
+    assert answer[0].endswith("Acceptable methods for corrosion removal are:")
+    assert len(chunks) == 2
+
+
+def test_each_numbered_paragraph_starts_its_own_chunk():
+    text = " ".join(
+        [
+            _paragraph("7-44", "SAFETY WIRE", "wire"),
+            _paragraph("7-45", "INTERNAL WRENCHING BOLTS", "bolt"),
+            _paragraph("7-46", "TURNBUCKLES", "turnbuckle"),
+        ]
+    )
+    chunks = chunk_text(text, max_chars=1200, overlap_chars=150, paragraphs=True)
+    assert [c[:5] for c in chunks] == ["7-44.", "7-45.", "7-46."]
+    for chunk, topic in zip(chunks, ["wire", "bolt", "turnbuckle"], strict=True):
+        assert f"the {topic} procedure" in chunk
+        others = {"wire", "bolt", "turnbuckle"} - {topic}
+        assert not any(f"the {other} procedure" in chunk for other in others)
+
+
+def test_overlap_never_crosses_a_heading_but_still_works_inside_a_paragraph():
+    long_one = _paragraph("4-10", "WELDING", "weld", sentences=40)
+    text = f"{long_one} {_paragraph('4-11', 'BRAZING', 'braze')}"
+    chunks = chunk_text(text, max_chars=400, overlap_chars=120, paragraphs=True)
+    weld = [c for c in chunks if "weld procedure" in c]
+    assert len(weld) > 1
+    for before, after in itertools.pairwise(weld):
+        assert split_sentences(after)[0] in split_sentences(before)  # overlap kept
+    braze = [c for c in chunks if "braze procedure" in c]
+    assert braze[0].startswith("4-11. BRAZING.")
+    assert all("weld procedure" not in c for c in braze)
+
+
+@pytest.mark.parametrize(
+    "middle",
+    [
+        "See the figure. FIGURE 11-30. TIE-DOWN STRAP INSTALLATION TOOL.",
+        "Use the values in TABLE 7-1. RECOMMENDED TORQUE VALUES apply.",
+        "The text layer splits it: FI GURE 5-3. GENERATING AN EDDY CURRENT.",
+        "Clamp as shown in Figures 11-11 through 11-13. CAUTION: metal clamps chafe.",
+        "Apply AC 43.13-2. AIRCRAFT ALTERATIONS are covered there.",
+        "Contents ........................ 6-35 6-149. TREATMENT OF MAGNESIUM ....",
+        "Refer to paragraph 7-39. Inspect the bolts again.",
+    ],
+)
+def test_captions_and_references_do_not_start_a_chunk(middle):
+    filler = "This sentence is ordinary text about aircraft structure. " * 5
+    text = f"{filler}{middle} {filler}"
+    assert split_paragraphs(text) == [text.strip()]
+
+
+def test_a_heading_too_close_to_the_last_cut_stays_with_it():
+    # A section title is followed at once by the first paragraph's number: the
+    # title must stay with that paragraph, not become a chunk of its own.
+    text = (
+        "Previous topic ends here with enough words to count as a block. " * 4
+        + "SECTION 11. OTHER METALS AND ALLOYS "
+        + _paragraph("6-179", "NOBLE METAL COATINGS", "silver")
+    )
+    blocks = split_paragraphs(text)
+    assert len(blocks) == 2
+    assert blocks[1].startswith("SECTION 11. OTHER METALS AND ALLOYS 6-179. NOBLE")
+    # and nothing is lost or duplicated at the cuts
+    assert " ".join(blocks) == text.strip()
+
+
+def test_a_sliver_is_folded_into_the_chunk_before_it():
+    # five 50-character sentences fill a 300-character chunk; the sixth spills
+    # into a last chunk that is the overlap (sentence 4) plus 56 new characters
+    sentences = [
+        f"Torque step {i} is applied to the fitting with care." for i in range(6)
+    ]
+    text = " ".join([*sentences, "Done."])
+    plain = chunk_text(text, max_chars=300, overlap_chars=60)
+    assert plain[-1] == f"{sentences[4]} {sentences[5]} Done."  # a sliver
+
+    folded = chunk_text(text, max_chars=300, overlap_chars=60, paragraphs=True)
+    assert len(folded) == len(plain) - 1
+    assert folded[-1].endswith(f"{sentences[4]} {sentences[5]} Done.")
+    assert folded[-1].count(sentences[4]) == 1  # the overlap was not added twice
+    assert all(len(c) <= 300 + 200 for c in folded)
+
+
+def test_every_sentence_lands_in_some_chunk_with_paragraphs():
+    text = " ".join(
+        [PAGE_349_TAIL] + [_paragraph(f"9-{n}", "GEAR", "gear") for n in range(3)]
+    )
+    for size, overlap in [(300, 60), (600, 150), (1200, 150)]:
+        chunks = chunk_text(text, size, overlap, paragraphs=True)
+        joined = " ".join(chunks)
+        assert all(s in joined for s in split_sentences(text))
+
+
+def test_paragraph_chunking_is_off_unless_asked_for():
+    pages = [PageText(1, "6-43", PAGE_349_TAIL)]
+    default = chunk_pages(pages, 1200, 150)
+    assert any("copper" in c.text and "TITANIUM" in c.text for c in default)
+    by_paragraph = chunk_pages(pages, 1200, 150, paragraphs=True)
+    assert by_paragraph[1].text.startswith("6-181.")
+    assert [c.index for c in by_paragraph] == [0, 1]
+    assert chunking_name(False) == "sentences"
+    assert chunking_name(True) == "paragraphs"
 
 
 # ------------------------------------------------------- reading real PDFs

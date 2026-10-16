@@ -4,11 +4,14 @@
     python scripts/ingest_pdfs.py data/aviation              # every .pdf in a folder
     python scripts/ingest_pdfs.py manual.pdf --title "AC 43.13-1B"
     python scripts/ingest_pdfs.py data/aviation --dry-run    # read and chunk only
+    python scripts/ingest_pdfs.py manual.pdf --replace       # re-chunk a stored file
 
 Same code path as POST /v1/documents (app/services/documents.py:ingest_pdf), but
 with no HTTP request to keep open, which is what you want for a 700-page manual.
 A file whose bytes were ingested before is skipped, so re-running a folder is
-safe.
+safe. --replace re-ingests such a file with the current chunking settings
+(CHUNK_BY_PARAGRAPH, CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS): the stored copy and
+its chunks are deleted in the same transaction that stores the new ones.
 
 Requires Postgres (migrated: `alembic upgrade head`) and Ollama with the
 embedding model pulled. --dry-run needs neither.
@@ -29,6 +32,7 @@ from app.services.ocr import ocr_pages  # noqa: E402
 from app.services.pdf_text import (  # noqa: E402
     PdfError,
     chunk_pages,
+    chunking_name,
     extract_pages,
 )
 
@@ -54,12 +58,18 @@ def dry_run(path: Path) -> None:
         ocr_pages if settings.ocr_enabled else None,
         settings.ocr_language,
     )
-    chunks = chunk_pages(pages, settings.chunk_max_chars, settings.chunk_overlap_chars)
+    chunks = chunk_pages(
+        pages,
+        settings.chunk_max_chars,
+        settings.chunk_overlap_chars,
+        paragraphs=settings.chunk_by_paragraph,
+    )
     labelled = sum(1 for p in pages if p.label)
     ocred = sum(1 for p in pages if p.ocr)
     print(
         f"  {len(pages)} pages ({labelled} with a printed page number, {ocred} OCR), "
-        f"{len(chunks)} chunks, read in {time.monotonic() - started:.1f}s"
+        f"{len(chunks)} chunks ({chunking_name(settings.chunk_by_paragraph)}), "
+        f"read in {time.monotonic() - started:.1f}s"
     )
     if chunks:
         sample = chunks[len(chunks) // 2]
@@ -67,7 +77,7 @@ def dry_run(path: Path) -> None:
         print(f"  sample (PDF page {sample.page}{label}): {sample.text[:200]!r}")
 
 
-async def ingest(paths: list[Path], title: str | None) -> int:
+async def ingest(paths: list[Path], title: str | None, replace: bool = False) -> int:
     from app.db.base import SessionFactory, engine
     from app.llm.ollama import OllamaClient
     from app.services.documents import ingest_pdf
@@ -96,6 +106,7 @@ async def ingest(paths: list[Path], title: str | None) -> int:
                         path.name,
                         title if len(paths) == 1 else None,
                         progress=progress,
+                        replace=replace,
                     )
             except PdfError as exc:
                 failures += 1
@@ -110,6 +121,8 @@ async def ingest(paths: list[Path], title: str | None) -> int:
             if result.duplicate:
                 print(f"  already ingested as document {result.document_id}: skipped")
             else:
+                if result.replaced_document_id is not None:
+                    print(f"  replaced document {result.replaced_document_id}" + " " * 20)
                 print(
                     f"  document {result.document_id}: {result.pages} pages, "
                     f"{result.chunks} chunks, {result.ocr_pages} OCR pages, "
@@ -128,6 +141,12 @@ def main() -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="read and chunk only; store nothing"
     )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="re-ingest files that are already stored, with the current chunking "
+        "settings (the stored copy and its chunks are deleted)",
+    )
     args = parser.parse_args()
 
     pdfs = find_pdfs(args.paths)
@@ -144,7 +163,7 @@ def main() -> int:
                 print(f"  SKIPPED: {exc}")
         return 0
 
-    return 1 if asyncio.run(ingest(pdfs, args.title)) else 0
+    return 1 if asyncio.run(ingest(pdfs, args.title, args.replace)) else 0
 
 
 if __name__ == "__main__":

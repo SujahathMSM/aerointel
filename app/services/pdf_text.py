@@ -12,7 +12,10 @@ Three steps:
    repeat on every page ("9/27/01  AC 43.13-1B  Par 3-2  Page 3-3"), and the
    line breaks and hyphenation that come from the page layout.
 3. `chunk_pages` cuts each page into chunks that end on sentence boundaries.
-   A chunk never crosses a page, so every citation points at one page.
+   A chunk never crosses a page, so every citation points at one page. With
+   `paragraphs=True` a chunk also starts at each numbered paragraph heading
+   ("6-181. TITANIUM AND TITANIUM ALLOYS."), so one chunk does not carry the
+   end of one topic and the start of the next.
 """
 
 import io
@@ -230,10 +233,94 @@ def _hard_split(sentence: str, max_chars: int) -> list[str]:
     return parts
 
 
-def chunk_text(text: str, max_chars: int, overlap_chars: int) -> list[str]:
-    """Cut one page of text into chunks of up to max_chars on sentence ends."""
+# A numbered paragraph heading: "6-181. TITANIUM AND ...", "7-45. INTERNAL ...".
+# The number must not continue another token ("AC 43.13-2." has a "." before
+# "13") and the heading word must be in capitals, which a reference in running
+# text ("see 7-39. Then ...") is not. "SECTION 11. OTHER METALS" also counts.
+_HEADING = re.compile(
+    r"(?<![\w.\-])\d{1,2}-\d{1,3}\.(?=\s+[A-Z][A-Z(])"
+    r"|\bSECTION\s+\d{1,2}\.(?=\s+[A-Z])"
+)
+# Words that put a paragraph-style number in a caption, not a heading:
+# "FIGURE 11-30. TIE-DOWN ...", "TABLE 7-3. ...", and "FI GURE" split by the
+# PDF's text layer.
+_CAPTION_WORDS = frozenset(
+    {"FIGURE", "FIGURES", "TABLE", "TABLES", "GURE", "BLE", "FIG"}
+)
+# A heading only starts a new chunk once the text before it is at least this
+# long, so a section title stays with its first paragraph and a run of short
+# headings does not turn into a run of tiny chunks.
+MIN_BLOCK_CHARS = 200
+# A last chunk that would add fewer new characters than this (beyond the
+# overlap it repeats) is folded into the chunk before it instead.
+MIN_TAIL_CHARS = 200
+
+
+def _starts_a_paragraph(text: str, start: int) -> bool:
+    """Is the heading-shaped number at `start` really a heading?
+
+    A heading follows the end of a sentence (or a closing bracket), the start
+    of the page, or a capitalised section title ("SECTION 11. OTHER METALS AND
+    ALLOYS 6-179. ..."). Anything else (a page number in a table of contents,
+    "Figures 11-11 through 11-13.", "FIGURE 5-3.") is a reference or caption.
+    """
+    before = text[:start].rstrip()
+    if not before:
+        return True
+    if before[-1] in ".!?:)]\"'":
+        return True
+    word = before.split()[-1]
+    return word.isalpha() and word.isupper() and word not in _CAPTION_WORDS
+
+
+def split_paragraphs(text: str, min_block: int = MIN_BLOCK_CHARS) -> list[str]:
+    """Cut a page's text at numbered paragraph headings.
+
+    A cut is made only when the text since the previous cut is at least
+    `min_block` characters long. Every character of `text` ends up in exactly
+    one block (apart from whitespace at the cuts).
+    """
+    blocks: list[str] = []
+    last = 0
+    for match in _HEADING.finditer(text):
+        start = match.start()
+        if start - last < min_block or not _starts_a_paragraph(text, start):
+            continue
+        blocks.append(text[last:start].strip())
+        last = start
+    blocks.append(text[last:].strip())
+    return [block for block in blocks if block]
+
+
+def chunk_text(
+    text: str,
+    max_chars: int,
+    overlap_chars: int,
+    *,
+    paragraphs: bool = False,
+) -> list[str]:
+    """Cut one page of text into chunks of up to max_chars on sentence ends.
+
+    `paragraphs=True`: first cut the page at numbered paragraph headings, then
+    chunk each paragraph on its own (overlap never crosses a heading), and
+    fold a last chunk that would add under MIN_TAIL_CHARS of new text into the
+    chunk before it, which may then run up to MIN_TAIL_CHARS over max_chars.
+    """
     if max_chars <= 0:
         raise ValueError("max_chars must be positive")
+    if not paragraphs:
+        return _chunk_sentences(text, max_chars, overlap_chars, merge_tail=0)
+    chunks: list[str] = []
+    for block in split_paragraphs(text):
+        chunks.extend(
+            _chunk_sentences(block, max_chars, overlap_chars, merge_tail=MIN_TAIL_CHARS)
+        )
+    return chunks
+
+
+def _chunk_sentences(
+    text: str, max_chars: int, overlap_chars: int, merge_tail: int
+) -> list[str]:
     overlap_chars = max(0, min(overlap_chars, max_chars // 2))
 
     sentences: list[str] = []
@@ -267,17 +354,34 @@ def chunk_text(text: str, max_chars: int, overlap_chars: int) -> list[str]:
         new_in_current += 1
         size += added
     if current and new_in_current:
-        chunks.append(" ".join(current))
+        fresh = current[len(current) - new_in_current :]
+        if chunks and merge_tail and len(" ".join(fresh)) < merge_tail:
+            # A sliver (overlap plus a sentence or two) embeds as a near-copy of
+            # the chunk before it and can outrank the chunk holding the answer.
+            chunks[-1] = f"{chunks[-1]} {' '.join(fresh)}"
+        else:
+            chunks.append(" ".join(current))
     return chunks
 
 
+def chunking_name(paragraphs: bool) -> str:
+    """How a document was cut; stored on each chunk so results can be compared."""
+    return "paragraphs" if paragraphs else "sentences"
+
+
 def chunk_pages(
-    pages: list[PageText], max_chars: int = 1200, overlap_chars: int = 150
+    pages: list[PageText],
+    max_chars: int = 1200,
+    overlap_chars: int = 150,
+    *,
+    paragraphs: bool = False,
 ) -> list[TextChunk]:
     """Chunk every page; a chunk never spans two pages."""
     chunks: list[TextChunk] = []
     for page in pages:
-        for text in chunk_text(page.text, max_chars, overlap_chars):
+        for text in chunk_text(
+            page.text, max_chars, overlap_chars, paragraphs=paragraphs
+        ):
             if _alnum_count(text) < MIN_CHUNK_ALNUM:
                 continue
             chunks.append(

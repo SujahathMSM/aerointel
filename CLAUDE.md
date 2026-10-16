@@ -49,6 +49,7 @@ mypy app                   # note: mypy excludes alembic/versions, scripts, test
 python -m evals.run_eval
 python -m evals.run_eval --retriever hybrid --reranker crossencoder --faithfulness
 python -m evals.doc_eval [--retriever hybrid] [--neighbors 1] [--show ID|all]   # real documents, scored by page (needs the FAA manual ingested)
+python scripts/ingest_pdfs.py data/aviation [--dry-run] [--replace]   # ingest PDFs; --replace re-chunks stored ones
 
 # Embedding version migration (rows are tagged with embedding_model; never silently mix models)
 python scripts/backfill_embeddings.py --dry-run
@@ -120,6 +121,11 @@ the pooled connection), `services/pdf_text.py` (pypdf text, repeated header/foot
 removal, printed page labels, sentence-bound chunks that never cross a page), optional
 `services/ocr.py` for blank pages, batched embedding, then one transaction writing the
 `documents` row and its chunks (`document_id`, `chunk_index`, `page`, `page_label`).
+`CHUNK_BY_PARAGRAPH` (off by default) also cuts at numbered paragraph headings
+("6-181. TITANIUM ...") and folds sliver chunks into the one before; each chunk's
+`metadata.chunking` says which way it was cut. It only affects new ingests:
+`scripts/ingest_pdfs.py --replace` re-ingests a stored file, deleting the old copy in
+the same transaction that stores the new one (the document id changes).
 Never hold a DB connection across reading/embedding. The new tables/columns live in
 migration 0004, which is idempotent on purpose (the integration tests' `create_all`
 can create `documents` first). Chunks from plain `/v1/ingest` have NULL document

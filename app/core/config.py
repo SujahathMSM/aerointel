@@ -116,6 +116,13 @@ class Settings(BaseSettings):
     # straddles a boundary still lands whole in one chunk.
     chunk_max_chars: int = 1200
     chunk_overlap_chars: int = 150
+    # Also start a chunk at each numbered paragraph heading ("6-181. TITANIUM
+    # ..."), so a chunk does not mix the end of one topic with the start of the
+    # next, and fold sliver chunks into the one before. Off by default like the
+    # other retrieval switches: it only affects documents ingested (or
+    # re-ingested with `scripts/ingest_pdfs.py --replace`) while it is on.
+    # Measure with `python -m evals.doc_eval` before and after.
+    chunk_by_paragraph: bool = False
     # Chunks embedded per Ollama call.
     embed_batch_size: int = 8
     # OCR for pages with no text layer (scanned PDFs). Off by default: it needs
