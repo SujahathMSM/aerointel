@@ -29,6 +29,15 @@ os.environ["RATE_LIMIT_CAPACITY"] = "1000"
 # Same isolation for idempotency keys (tests reuse key strings like "k1").
 os.environ["IDEMPOTENCY_KEY_PREFIX"] = f"test-idem:{uuid.uuid4().hex}"
 
+# The trust-layer switches are read from the developer's .env too (they set
+# ANSWERABILITY_MODE=flag to try it live), and a fake DB session cannot run the
+# word check. Pin them to the shipped defaults; tests that exercise a mode pass
+# it explicitly through model_copy(update=...).
+os.environ["VERIFY_MODE"] = "flag"
+os.environ["ANSWERABILITY_MODE"] = "off"
+os.environ["ANSWERABILITY_MIN_CHUNKS"] = "1"
+os.environ["ANSWERABILITY_MIN_UNKNOWN"] = "1"
+
 from app.core.auth import create_access_token
 from app.core.config import get_settings
 
