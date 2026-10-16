@@ -61,7 +61,10 @@ def refusal_message(
         return UNKNOWN_TERMS_MESSAGE.format(terms=", ".join(unknown_terms))
     if reason == REASON_UNVERIFIED:
         return UNVERIFIED_MESSAGE.format(figures=", ".join(figures))
-    return NO_CONTEXT_MESSAGE.format(ceiling=ceiling)
+    message = NO_CONTEXT_MESSAGE.format(ceiling=ceiling)
+    if unknown_terms:
+        message += f" No stored document contains: {', '.join(unknown_terms)}."
+    return message
 
 
 @dataclass
@@ -168,14 +171,18 @@ async def prepare_answer(
         for chunk, distance in retrieved
         if distance <= settings.max_distance
     ]
+    # The word lookup is cheap, so it also runs for a question the distance gate
+    # refused: the reply can then say *which* words no document contains. It
+    # only changes the outcome ("refuse") for a question the gate let through.
     unknown_terms: list[str] = []
-    if relevant and settings.answerability_mode != "off":
+    if settings.answerability_mode != "off":
         found = await check_answerability(
             session, question, settings.answerability_min_chunks
         )
         unknown_terms = found.unknown
         if (
-            settings.answerability_mode == "refuse"
+            relevant
+            and settings.answerability_mode == "refuse"
             and len(unknown_terms) >= settings.answerability_min_unknown
         ):
             await session.commit()
@@ -202,6 +209,7 @@ async def prepare_answer(
             refused=True,
             chunks=retrieved,
             refusal_reason=REASON_DISTANCE,
+            unknown_terms=unknown_terms,
         )
 
     active = system_prompt()

@@ -230,12 +230,28 @@ async def test_off_mode_never_looks(monkeypatch):
     assert prepared.refused is False
 
 
-async def test_a_question_the_distance_gate_refused_is_not_checked(monkeypatch):
-    calls = _setup(monkeypatch, "refuse", ["airbus"], distance=0.95)
+async def test_a_question_the_distance_gate_refused_keeps_its_reason(monkeypatch):
+    """The gate decides first; the word check only adds which words are unknown."""
+    _setup(monkeypatch, "refuse", ["ge90"], distance=0.95)
     prepared = await generation.prepare_answer(FakeSession(), object(), "q?")
     assert prepared.refused is True
     assert prepared.refusal_reason == generation.REASON_DISTANCE
+    assert prepared.unknown_terms == ["ge90"]
+
+
+async def test_off_mode_does_not_look_even_when_the_gate_refused(monkeypatch):
+    calls = _setup(monkeypatch, "off", ["ge90"], distance=0.95)
+    prepared = await generation.prepare_answer(FakeSession(), object(), "q?")
+    assert prepared.refusal_reason == generation.REASON_DISTANCE
+    assert prepared.unknown_terms == []
     assert calls == []
+
+
+def test_a_distance_refusal_names_the_unknown_words_when_there_are_any():
+    plain = generation.refusal_message(generation.REASON_DISTANCE, [], [], 0.48)
+    named = generation.refusal_message(generation.REASON_DISTANCE, ["ge90"], [], 0.48)
+    assert "No stored document contains" not in plain
+    assert named.startswith(plain) and "No stored document contains: ge90." in named
 
 
 async def test_a_refusal_for_unknown_words_names_them():

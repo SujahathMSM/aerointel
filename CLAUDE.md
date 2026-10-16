@@ -141,7 +141,9 @@ passages it cites (`VERIFY_MODE` off|flag|block; deterministic, no model call) a
 are reported in `QueryResponse` (`verification`, `unknown_terms`, `refusal_reason`).
 `block` withholds the answer only on `/v1/query`; the stream sends a `verification`
 event after the text, because the text is already out. The word check runs after
-the distance gate and before the commit, like context widening. Neither fixes the
+the distance gate and before the commit, like context widening; it only decides
+(`refuse`) for questions the gate let through, but also names the unknown words on
+ones it refused. Neither fixes the
 "near-topic" question (every word occurs in the manual); that is still the
 prompt's rule 2. Don't turn `refuse` on without reading the `doc_eval` table.
 

@@ -415,8 +415,10 @@ distance gate asks whether some chunk is *close* to the question, which is a top
 test: "repair a carbon fiber propeller blade" is close to a manual about
 propellers. This check looks up each distinctive word of the question ("Airbus",
 "Garmin", "GE90") in the full-text index and lists those found in no stored chunk
-as `unknown_terms`. `flag` only reports them; `refuse` also refuses without
-calling the model (`refusal_reason: "unknown_terms"`). `ANSWERABILITY_MIN_CHUNKS`
+as `unknown_terms`. `flag` only reports them (also on a question the distance gate refused, where the
+refusal message then names the words: "No stored document contains: ge90");
+`refuse` also refuses a question the gate let through, without calling the model
+(`refusal_reason: "unknown_terms"`). `ANSWERABILITY_MIN_CHUNKS`
 (default 1) is how many chunks must contain a word for it to count as known, and
 `ANSWERABILITY_MIN_UNKNOWN` (default 1) how many unknown words refuse a question.
 
