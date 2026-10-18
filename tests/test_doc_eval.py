@@ -231,6 +231,13 @@ def test_the_golden_file_is_well_formed():
 
     # generic off-topic questions plus aviation ones the manual does not cover
     assert len(golden["off_topic"]) >= 10
+    kinds = [o["kind"] for o in golden["off_topic"]]
+    assert set(kinds) <= {"generic", "outside", "near_topic"}
+    assert kinds.count("near_topic") >= 15
+    for o in golden["off_topic"]:
+        assert o["question"].strip()
+        if o["kind"] == "near_topic":
+            assert o["manual_says"].strip(), o["id"]
 
 
 # ------------------------------------------------- answerability + --show
@@ -406,3 +413,45 @@ def test_show_marks_what_the_model_reads():
     lines = [line for line in text.splitlines() if line.startswith("  #")]
     assert lines[0].endswith("[read]")
     assert lines[1].endswith("<- right page  [not read]")
+
+
+# ------------------------------------------------ near-topic questions
+
+
+def test_near_topic_questions_are_kept_out_of_the_gate_sweep():
+    from evals.doc_eval import near_topic_summary, split_off_topic
+
+    off = [
+        {"id": "a", "kind": "outside", "refused": True, "top_distance": 0.53},
+        {"id": "b", "refused": False, "top_distance": 0.45},  # old file: no kind
+        {"id": "c", "kind": "near_topic", "refused": False, "top_distance": 0.36},
+        {"id": "d", "kind": "near_topic", "refused": False, "top_distance": 0.44},
+        {"id": "e", "kind": "near_topic", "refused": True, "top_distance": 0.55},
+    ]
+    gate, near = split_off_topic(off)
+    assert [r["id"] for r in gate] == ["a", "b"]
+    assert [r["id"] for r in near] == ["c", "d", "e"]
+    assert near_topic_summary(near) == {
+        "total": 3,
+        "gate_refused": 1,
+        "passed_min_distance": 0.36,
+        "passed_max_distance": 0.44,
+    }
+    assert near_topic_summary([]) is None
+
+
+def test_a_near_topic_question_does_not_pull_the_suggested_ceiling_down():
+    from evals.doc_eval import best_ceiling, split_off_topic, threshold_sweep
+
+    rows = [{"best_hit_distance": 0.40, "top_distance": 0.40}]
+    off = [
+        {"id": "far", "kind": "outside", "refused": True, "top_distance": 0.60},
+        {"id": "near", "kind": "near_topic", "refused": False, "top_distance": 0.36},
+    ]
+    gate, _near = split_off_topic(off)
+    best = best_ceiling(threshold_sweep(rows, gate))
+    assert best is not None and best["reaches_prompt"] == 1.0
+    # With the near-topic question in the sweep, no ceiling lets the right
+    # question through and refuses everything.
+    mixed = best_ceiling(threshold_sweep(rows, off))
+    assert mixed is None or mixed["reaches_prompt"] < 1.0

@@ -334,6 +334,35 @@ def print_answerability(
             )
 
 
+def split_off_topic(off_topic: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(questions the gate should refuse, near-topic questions).
+
+    Near-topic questions ("kind": "near_topic" in the golden file) are on a
+    subject the manual covers, in its own words, but ask for a figure it does
+    not give. They sit as close to the manual as right questions do, so no
+    MAX_DISTANCE can refuse them without refusing right ones; mixing them into
+    the sweep only drags the suggested ceiling down. They are reported on their
+    own and measured where they are actually handled: `evals.live_eval` (answer
+    check and prompt rule 2).
+    """
+    gate = [r for r in off_topic if r.get("kind") != "near_topic"]
+    near = [r for r in off_topic if r.get("kind") == "near_topic"]
+    return gate, near
+
+
+def near_topic_summary(near: list[dict]) -> dict | None:
+    """How many near-topic questions the gate refused anyway (not a target)."""
+    if not near:
+        return None
+    passed = [r["top_distance"] for r in near if not r["refused"]]
+    return {
+        "total": len(near),
+        "gate_refused": sum(r["refused"] for r in near),
+        "passed_min_distance": min(passed) if passed else None,
+        "passed_max_distance": max(passed) if passed else None,
+    }
+
+
 def summarise(rows: list[dict], off_topic: list[dict]) -> dict:
     n = len(rows)
     summary: dict = {"questions": n}
@@ -508,15 +537,35 @@ def print_report(
             f"plus ~400 for instructions)"
         )
 
-    if off_topic:
+    gate_off, near = split_off_topic(off_topic)
+    if gate_off:
         print()
         print("off-topic questions (must be refused):")
-        for r in off_topic:
+        for r in gate_off:
             top = f"{r['top_distance']:.3f}" if r["top_distance"] is not None else "-"
             print(
                 f"  {r['id']:<26} closest chunk {top}  "
                 f"{'refused' if r['refused'] else 'ANSWERED - gate too loose'}"
             )
+    if near:
+        print()
+        print(
+            "near-topic questions (the manual covers the subject, not the answer; "
+            "not in the sweep below - measure with evals.live_eval):"
+        )
+        for r in near:
+            top = f"{r['top_distance']:.3f}" if r["top_distance"] is not None else "-"
+            outcome = "refused" if r["refused"] else "passed (answer check / rule 2)"
+            print(f"  {r['id']:<26} closest chunk {top}  {outcome}")
+        ns = summary.get("near_topic") or near_topic_summary(near)
+        if ns:
+            line = f"  gate refused {ns['gate_refused']} of {ns['total']}"
+            if ns["passed_min_distance"] is not None:
+                line += (
+                    f"; the rest passed at {ns['passed_min_distance']:.3f}-"
+                    f"{ns['passed_max_distance']:.3f}"
+                )
+            print(line)
 
 
 def print_threshold(sweep: list[dict], current: float) -> None:
@@ -641,6 +690,7 @@ async def run(
                 off_topic.append(
                     {
                         "id": item["id"],
+                        "kind": item.get("kind"),
                         "question": item["question"],
                         **score_off_topic(results, settings.max_distance),
                         "term_counts": await term_chunk_counts(
@@ -666,9 +716,14 @@ async def run(
     finally:
         await ollama.close()
 
-    summary = summarise(per_item, off_topic)
+    # Near-topic questions are reported, not swept: see split_off_topic().
+    gate_off, near = split_off_topic(off_topic)
+    summary = summarise(per_item, gate_off)
+    near_summary = near_topic_summary(near)
+    if near_summary:
+        summary["near_topic"] = near_summary
     sweep = threshold_sweep(
-        per_item, off_topic, context_max_distance=context_max_distance
+        per_item, gate_off, context_max_distance=context_max_distance
     )
     label = (
         f"retriever={retriever}  reranker={reranker}  neighbors={neighbors}  "
@@ -679,18 +734,18 @@ async def run(
     print_threshold(sweep, settings.max_distance)
     ans_sweep = answerability_sweep(
         [r["term_counts"] for r in per_item],
-        [(r["term_counts"], r["refused"]) for r in off_topic],
+        [(r["term_counts"], r["refused"]) for r in gate_off],
     )
     combined = combined_sweep(
         per_item,
-        off_topic,
+        gate_off,
         settings.answerability_min_chunks,
         settings.answerability_min_unknown,
         context_max_distance=context_max_distance,
     )
     print_answerability(
         per_item,
-        off_topic,
+        gate_off,
         ans_sweep,
         settings.answerability_min_chunks,
         combined,

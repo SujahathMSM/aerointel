@@ -76,6 +76,33 @@ def test_summary_counts():
     assert s["off_declined"] == 1
 
 
+def test_off_topic_is_counted_per_group():
+    off = [
+        {**_row("off_topic", check="no", declined=True), "group": "near_topic"},
+        {**_row("off_topic"), "group": "near_topic"},
+        {**_row("off_topic", gate=False), "group": "outside"},
+        _row("off_topic", gate=False),  # no group: only in the totals
+    ]
+    s = summarise_live([], off)
+    assert s["off_by_group"] == {
+        "near_topic": {
+            "total": 2,
+            "passed_gate": 2,
+            "check_no": 1,
+            "answered": 2,
+            "declined": 1,
+        },
+        "outside": {
+            "total": 1,
+            "passed_gate": 0,
+            "check_no": 0,
+            "answered": 0,
+            "declined": 0,
+        },
+    }
+    assert s["off_total"] == 4
+
+
 def test_check_only_rows_have_no_answers():
     rows = [_row("right", answer=None)]
     s = summarise_live(rows, [])

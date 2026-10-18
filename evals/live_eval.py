@@ -95,6 +95,23 @@ def summarise_live(right: list[dict], off_topic: list[dict]) -> dict:
         "off_check_no": sum(r["check"] == CHECK_NO for r in off_in),
         "off_answered": len(answered_off),
         "off_declined": sum(r["declined"] for r in answered_off),
+        "off_by_group": {
+            group: _off_counts([r for r in off_topic if r.get("group") == group])
+            for group in sorted({r.get("group") or "-" for r in off_topic} - {"-"})
+        },
+    }
+
+
+def _off_counts(rows: list[dict]) -> dict:
+    """Gate, check and decline counts for one group of off-topic questions."""
+    gate_in = [r for r in rows if r["gate_passed"]]
+    answered = [r for r in gate_in if r.get("answer") is not None]
+    return {
+        "total": len(rows),
+        "passed_gate": len(gate_in),
+        "check_no": sum(r["check"] == CHECK_NO for r in gate_in),
+        "answered": len(answered),
+        "declined": sum(r["declined"] for r in answered),
     }
 
 
@@ -115,7 +132,9 @@ def print_live(right: list[dict], off_topic: list[dict], summary: dict) -> None:
             figures = f"ok ({r['numbers_checked']})"
         else:
             figures = "FLAG " + ",".join(r["unsupported"])[:10]
-        tag = "  (off-topic)" if r["kind"] == "off_topic" else ""
+        tag = ""
+        if r["kind"] == "off_topic":
+            tag = f"  ({(r.get('group') or 'off-topic').replace('_', '-')})"
         print(f"{r['id']:<30} {gate:>6} {check:>8} {answer:>9} {figures:>16}{tag}")
     s = summary
     print("-" * 74)
@@ -140,6 +159,14 @@ def print_live(right: list[dict], off_topic: list[dict], summary: dict) -> None:
             f"  answers: {s['off_declined']}/{s['off_answered']} decline "
             f"(prompt rule 2 obeyed)"
         )
+    for group, c in s.get("off_by_group", {}).items():
+        line = (
+            f"  {group.replace('_', '-')}: {c['passed_gate']}/{c['total']} pass the "
+            f"gate, check NO to {c['check_no']}"
+        )
+        if c["answered"]:
+            line += f", {c['declined']}/{c['answered']} answers decline"
+        print(line)
 
 
 async def run(
@@ -172,6 +199,8 @@ async def run(
         row: dict = {
             "id": item["id"],
             "kind": kind,
+            # off-topic subgroup from the golden file: generic | outside | near_topic
+            "group": item.get("kind"),
             "question": item["question"],
             "gate_passed": bool(context),
             "read_right_page": bool(

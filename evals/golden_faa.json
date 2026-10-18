@@ -1,6 +1,6 @@
 {
   "source": "AC_43.13-1B_CHG_1",
-  "about": "Questions a maintenance engineer could ask of FAA AC 43.13-1B (with Change 1). Each lists the PDF page(s) that actually answer it and 'facts': short phrases from the manual that the answer needs, both checked against the extracted text of the file fetched by scripts/fetch_sample_docs.ps1 (every fact sits inside one chunk on its page). 'pages' are PDF file page numbers (what a PDF viewer calls page N); 'labels' are the page numbers printed on those pages, for humans. A retrieved chunk counts as a hit when it comes from one of these pages; a fact counts as found when its text appears in a chunk the model would read (case and spacing ignored). 'off_topic' questions have no answer in the manual and must be refused: the first three are generic, the rest are aviation questions that this manual does not cover (checked: none of their key terms occur in it), which is the harder test for MAX_DISTANCE.",
+  "about": "Questions a maintenance engineer could ask of FAA AC 43.13-1B (with Change 1). Each lists the PDF page(s) that actually answer it and 'facts': short phrases from the manual that the answer needs, both checked against the extracted text of the file fetched by scripts/fetch_sample_docs.ps1 (every fact sits inside one chunk on its page). 'pages' are PDF file page numbers (what a PDF viewer calls page N); 'labels' are the page numbers printed on those pages, for humans. A retrieved chunk counts as a hit when it comes from one of these pages; a fact counts as found when its text appears in a chunk the model would read (case and spacing ignored). 'off_topic' questions have no answer in the manual and must be refused: the first three are generic, the rest are aviation questions that this manual does not cover (checked: none of their key terms occur in it), which is the harder test for MAX_DISTANCE. Each off_topic entry has a 'kind': 'generic' (not aviation), 'outside' (aviation the manual does not cover; its key terms do not occur) or 'near_topic' (the manual covers the subject and uses its words, but not the specific figure or procedure asked for; 'manual_says' records what it does say, checked against the extracted text 2026-10-18). Near-topic questions pass the distance gate by design: they test the answer check and prompt rule 2, not MAX_DISTANCE.",
   "items": [
     {
       "id": "cable-critical-fatigue-area",
@@ -330,47 +330,162 @@
   "off_topic": [
     {
       "id": "capital-of-france",
-      "question": "what is the capital of France?"
+      "question": "what is the capital of France?",
+      "kind": "generic"
     },
     {
       "id": "chocolate-cake",
-      "question": "give me a recipe for a chocolate cake"
+      "question": "give me a recipe for a chocolate cake",
+      "kind": "generic"
     },
     {
       "id": "kubernetes-ingress",
-      "question": "how do I configure an ingress controller in Kubernetes?"
+      "question": "how do I configure an ingress controller in Kubernetes?",
+      "kind": "generic"
     },
     {
       "id": "a320-max-takeoff-weight",
-      "question": "What is the maximum takeoff weight of an Airbus A320?"
+      "question": "What is the maximum takeoff weight of an Airbus A320?",
+      "kind": "outside"
     },
     {
       "id": "b737-jacking",
-      "question": "How do I jack up a Boeing 737 to change a main wheel?"
+      "question": "How do I jack up a Boeing 737 to change a main wheel?",
+      "kind": "outside"
     },
     {
       "id": "g1000-flight-plan",
-      "question": "How do I load a flight plan into a Garmin G1000?"
+      "question": "How do I load a flight plan into a Garmin G1000?",
+      "kind": "outside"
     },
     {
       "id": "mel-dispatch",
-      "question": "What are the rules for dispatching with an inoperative item under the minimum equipment list?"
+      "question": "What are the rules for dispatching with an inoperative item under the minimum equipment list?",
+      "kind": "outside"
     },
     {
       "id": "ge90-fan-blades",
-      "question": "How do I replace the fan blades on a GE90 turbofan engine?"
+      "question": "How do I replace the fan blades on a GE90 turbofan engine?",
+      "kind": "outside"
     },
     {
       "id": "outflow-valve",
-      "question": "How is a cabin pressurization outflow valve adjusted on an airliner?"
+      "question": "How is a cabin pressurization outflow valve adjusted on an airliner?",
+      "kind": "outside"
     },
     {
       "id": "carbon-propeller-repair",
-      "question": "How do I repair a carbon fiber propeller blade?"
+      "question": "How do I repair a carbon fiber propeller blade?",
+      "kind": "near_topic",
+      "manual_says": "Propeller repairs cover wood and metal blades; the composite repairs exclude 'advanced composite components, such as graphite (carbon fiber)'. No carbon blade repair."
     },
     {
       "id": "helicopter-rotor-bolt",
-      "question": "What torque applies to a helicopter main rotor blade bolt?"
+      "question": "What torque applies to a helicopter main rotor blade bolt?",
+      "kind": "near_topic",
+      "manual_says": "Torque is covered generally (Table 7-1 when the manufacturer gives none); nothing on helicopter rotor blade bolts."
+    },
+    {
+      "id": "spark-plug-gap",
+      "kind": "near_topic",
+      "question": "What gap should the electrodes of an aircraft spark plug be set to?",
+      "manual_says": "8-15: check 'the proper gap setting' with a feeler gauge; regapping is in the manufacturers' manuals. No gap value."
+    },
+    {
+      "id": "tire-pressure-value",
+      "kind": "near_topic",
+      "question": "What pressure should the main landing gear tires of a light aircraft be inflated to?",
+      "manual_says": "9-15: inflate to 'the recommended pressure'; nitrogen recommended. No pressure value."
+    },
+    {
+      "id": "strut-nitrogen-pressure",
+      "kind": "near_topic",
+      "question": "What nitrogen pressure should a nose gear shock strut be serviced to?",
+      "manual_says": "Landing gear: 'service the strut with nitrogen to get the proper strut extension'. No pressure."
+    },
+    {
+      "id": "aileron-cable-tension",
+      "kind": "near_topic",
+      "question": "What tension should the aileron control cables be rigged to?",
+      "manual_says": "7-153: adjust tension 'in accordance with the airframe manufacturer's recommendations'. No tension value."
+    },
+    {
+      "id": "elt-battery-hours",
+      "kind": "near_topic",
+      "question": "After how many hours of cumulative use must an ELT battery be replaced?",
+      "manual_says": "12-22: inspect for corrosion, verify the battery is approved and check its expiration date. No hours."
+    },
+    {
+      "id": "lycoming-o360-tbo",
+      "kind": "near_topic",
+      "question": "What is the time between overhaul for a Lycoming O-360 engine?",
+      "manual_says": "No TBO anywhere; Lycoming appears once, in a cylinder oversize table."
+    },
+    {
+      "id": "magneto-rpm-drop",
+      "kind": "near_topic",
+      "question": "What is the maximum RPM drop allowed when checking each magneto during the engine run-up?",
+      "manual_says": "No magneto drop limit; the only magneto RPM figure is a 1200 rpm troubleshooting run (a trap)."
+    },
+    {
+      "id": "fixed-pitch-static-rpm",
+      "kind": "near_topic",
+      "question": "What static RPM should a fixed-pitch propeller reach during a ground run-up?",
+      "manual_says": "No static RPM figure."
+    },
+    {
+      "id": "brake-disk-runout",
+      "kind": "near_topic",
+      "question": "What is the maximum allowable runout of a brake disk?",
+      "manual_says": "Brake disks: replace if cracked, warped, corroded or discolored. No runout limit (the word does not occur)."
+    },
+    {
+      "id": "deicer-boot-pressure",
+      "kind": "near_topic",
+      "question": "What air pressure inflates the rubber deicer boots on a wing leading edge?",
+      "manual_says": "Deicer boots appear once, in a history note on engine discharge air. No pressure."
+    },
+    {
+      "id": "prepreg-freezer-life",
+      "kind": "near_topic",
+      "question": "How many months can prepreg fabric be stored in a freezer before it expires?",
+      "manual_says": "Composites: 'observe shelf life' of prepreg. No storage time or temperature."
+    },
+    {
+      "id": "epoxy-glass-transition",
+      "kind": "near_topic",
+      "question": "What is the glass transition temperature of a typical epoxy laminating resin?",
+      "manual_says": "Epoxy pot life and cure times are mentioned; 'glass transition' does not occur."
+    },
+    {
+      "id": "spar-cap-pitting-limit",
+      "kind": "near_topic",
+      "question": "How deep may corrosion pitting be on a wing spar cap before the spar must be replaced?",
+      "manual_says": "Corrosion chapter describes pitting and its removal; no pit-depth limit for spar caps."
+    },
+    {
+      "id": "seat-belt-age",
+      "kind": "near_topic",
+      "question": "After how many years must aircraft seat belts be replaced?",
+      "manual_says": "Seat belts: TSO approval; replace when found unairworthy; webbing deteriorates. No age limit."
+    },
+    {
+      "id": "fire-bottle-cartridge",
+      "kind": "near_topic",
+      "question": "How often must the discharge cartridge on an engine fire extinguisher bottle be replaced?",
+      "manual_says": "Cartridge-actuated extinguishers appear only in a wiring (shielding) paragraph. No replacement interval."
+    },
+    {
+      "id": "oil-change-interval",
+      "kind": "near_topic",
+      "question": "How many flight hours are allowed between oil changes on a piston aircraft engine?",
+      "manual_says": "Oil changes are mentioned only for oil sampling and filter inspection. No interval."
+    },
+    {
+      "id": "compressor-blade-dent",
+      "kind": "near_topic",
+      "question": "What is the maximum dent depth allowed on a turbine engine compressor blade?",
+      "manual_says": "'Compressor blade' does not occur; turbine engines are barely covered."
     }
   ]
 }
