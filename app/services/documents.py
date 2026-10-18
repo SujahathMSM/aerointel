@@ -111,6 +111,7 @@ async def ingest_pdf(
         data,
         ocr_pages if settings.ocr_enabled else None,
         settings.ocr_language,
+        settings.pdf_repair_split_words,
     )
     paragraphs = settings.chunk_by_paragraph
     chunks = chunk_pages(
@@ -162,6 +163,7 @@ async def ingest_pdf(
                 "source": title,
                 "filename": filename,
                 "chunking": chunking_name(paragraphs),
+                "word_repair": settings.pdf_repair_split_words,
             },
             embedding=embedding,
             embedding_model=settings.embedding_model,

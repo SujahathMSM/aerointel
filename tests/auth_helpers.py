@@ -40,6 +40,11 @@ os.environ["ANSWERABILITY_MIN_UNKNOWN"] = "1"
 # Same for chunking: a developer re-ingesting with CHUNK_BY_PARAGRAPH=true must
 # not change what the ingest tests chunk. Tests that want it pass it explicitly.
 os.environ["CHUNK_BY_PARAGRAPH"] = "false"
+# And for the reading limit and the answer check (the check calls the model,
+# which fake Ollama clients in the tests do not expect).
+os.environ["CONTEXT_MAX_DISTANCE"] = ""
+os.environ["ANSWER_CHECK"] = "off"
+os.environ["PDF_REPAIR_SPLIT_WORDS"] = "false"
 
 from app.core.auth import create_access_token
 from app.core.config import get_settings

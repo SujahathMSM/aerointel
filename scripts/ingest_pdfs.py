@@ -10,7 +10,7 @@ Same code path as POST /v1/documents (app/services/documents.py:ingest_pdf), but
 with no HTTP request to keep open, which is what you want for a 700-page manual.
 A file whose bytes were ingested before is skipped, so re-running a folder is
 safe. --replace re-ingests such a file with the current chunking settings
-(CHUNK_BY_PARAGRAPH, CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS): the stored copy and
+(CHUNK_BY_PARAGRAPH, PDF_REPAIR_SPLIT_WORDS, CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS): the stored copy and
 its chunks are deleted in the same transaction that stores the new ones.
 
 Requires Postgres (migrated: `alembic upgrade head`) and Ollama with the
@@ -57,6 +57,7 @@ def dry_run(path: Path) -> None:
         path.read_bytes(),
         ocr_pages if settings.ocr_enabled else None,
         settings.ocr_language,
+        settings.pdf_repair_split_words,
     )
     chunks = chunk_pages(
         pages,
@@ -68,7 +69,8 @@ def dry_run(path: Path) -> None:
     ocred = sum(1 for p in pages if p.ocr)
     print(
         f"  {len(pages)} pages ({labelled} with a printed page number, {ocred} OCR), "
-        f"{len(chunks)} chunks ({chunking_name(settings.chunk_by_paragraph)}), "
+        f"{len(chunks)} chunks ({chunking_name(settings.chunk_by_paragraph)}"
+        f"{', split words repaired' if settings.pdf_repair_split_words else ''}), "
         f"read in {time.monotonic() - started:.1f}s"
     )
     if chunks:

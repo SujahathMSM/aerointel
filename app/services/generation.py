@@ -47,10 +47,24 @@ UNVERIFIED_MESSAGE = (
     "The drafted answer contained figures that do not appear in the passages it "
     "cites ({figures}), so it was withheld. Read the retrieved passages directly."
 )
+NOT_IN_CONTEXT_MESSAGE = (
+    "The closest passages are on this topic but do not answer the question, so "
+    "no answer was generated. Read the retrieved passages directly, or ingest the "
+    "document that covers it."
+)
 
 REASON_DISTANCE = "too_far"
 REASON_UNKNOWN_TERMS = "unknown_terms"
 REASON_UNVERIFIED = "unverified_numbers"
+REASON_NOT_IN_CONTEXT = "not_in_context"
+
+# The answer check's prompt (app/prompts/answer_check.<version>.txt) and the
+# words its reply is read as. Anything else counts as "unclear", which never
+# refuses: a check that cannot be read must not silence a real answer.
+ANSWER_CHECK_PROMPT = "answer_check"
+CHECK_YES = "yes"
+CHECK_NO = "no"
+CHECK_UNCLEAR = "unclear"
 
 
 def refusal_message(
@@ -61,6 +75,8 @@ def refusal_message(
         return UNKNOWN_TERMS_MESSAGE.format(terms=", ".join(unknown_terms))
     if reason == REASON_UNVERIFIED:
         return UNVERIFIED_MESSAGE.format(figures=", ".join(figures))
+    if reason == REASON_NOT_IN_CONTEXT:
+        return NOT_IN_CONTEXT_MESSAGE
     message = NO_CONTEXT_MESSAGE.format(ceiling=ceiling)
     if unknown_terms:
         message += f" No stored document contains: {', '.join(unknown_terms)}."
@@ -84,6 +100,8 @@ class AnswerResult:
     unknown_terms: list[str] = field(default_factory=list)
     # Result of checking the answer's numbers against its cited passages.
     verification: Verification | None = None
+    # The model's own yes/no on "does the context answer this?" (None when off).
+    answer_check: str | None = None
 
 
 @dataclass
@@ -104,6 +122,7 @@ class PreparedAnswer:
     prompt_version: str | None = None
     refusal_reason: str | None = None
     unknown_terms: list[str] = field(default_factory=list)
+    answer_check: str | None = None
 
 
 def _where(chunk) -> str:
@@ -134,12 +153,85 @@ def warn_if_prompt_may_not_fit(system: str, prompt: str) -> bool:
     return too_long
 
 
+def context_ceiling(max_distance: float, context_max_distance: float | None) -> float:
+    """The distance up to which retrieved chunks are given to the model.
+
+    Never tighter than the refusal gate: a chunk that passes the gate is always
+    read. None means "same as the gate", the original behaviour.
+    """
+    if context_max_distance is None:
+        return max_distance
+    return max(max_distance, context_max_distance)
+
+
+def select_context(
+    retrieved: list[tuple],
+    max_distance: float,
+    context_max_distance: float | None = None,
+) -> list[tuple]:
+    """What the model reads, in retrieval order; empty means refuse.
+
+    Two separate questions. *Answer at all?* -- only if some retrieved chunk is
+    within `max_distance` (the structural refusal, unchanged). *Read what?* --
+    every retrieved chunk within the context ceiling. With the ceiling above the
+    gate, an answer chunk that ranks second at 0.495 still reaches the model when
+    the question passed the gate on another chunk at 0.422; a question whose
+    closest chunk is 0.495 is still refused.
+    """
+    if not any(distance <= max_distance for _, distance in retrieved):
+        return []
+    ceiling = context_ceiling(max_distance, context_max_distance)
+    return [(chunk, d) for chunk, d in retrieved if d <= ceiling]
+
+
+def answer_check_prompt(question: str, chunks: list[tuple]) -> str:
+    """The same numbered context the answer would get, then a yes/no question."""
+    return build_prompt(question, chunks).removesuffix("ANSWER:") + "REPLY (YES or NO):"
+
+
+def parse_answer_check(reply: str) -> str:
+    """YES / NO from the first word of the reply; anything else is unclear."""
+    words = reply.strip().split()
+    first = words[0].strip(".,:;!*\"'").lower() if words else ""
+    if first == "yes":
+        return CHECK_YES
+    if first == "no":
+        return CHECK_NO
+    return CHECK_UNCLEAR
+
+
+async def check_answerable(
+    ollama: OllamaClient, question: str, chunks: list[tuple]
+) -> str:
+    """Ask the model whether the context answers the question (one short call).
+
+    The distance gate measures topic, not whether the passages hold the
+    answer: "torque for a helicopter main rotor blade bolt" sits as close to
+    the torque table as a real torque question does. Reading the passages is
+    the only way to tell, so the model is asked before it writes an answer.
+    """
+    prompt = get_prompt(ANSWER_CHECK_PROMPT)
+    reply = await ollama.chat(prompt.text, answer_check_prompt(question, chunks))
+    return parse_answer_check(reply)
+
+
+def context_block(chunk) -> str:
+    """One CONTEXT block as the model sees it: its source line, then the text.
+
+    The figure check reads the same text, so a page the answer copies from the
+    source line ("page 7-9 (PDF page 364)") counts as supported. Without it every
+    page citation was flagged as an unsupported figure.
+    """
+    source = chunk.metadata_.get("source", "unknown")
+    return f"Source: {source}{_where(chunk)}\n{chunk.content}"
+
+
 def build_prompt(question: str, chunks: list[tuple]) -> str:
     """Numbered CONTEXT blocks; block number == citation number."""
-    blocks = []
-    for rank, (chunk, _distance) in enumerate(chunks, start=1):
-        source = chunk.metadata_.get("source", "unknown")
-        blocks.append(f"[{rank}] Source: {source}{_where(chunk)}\n{chunk.content}")
+    blocks = [
+        f"[{rank}] {context_block(chunk)}"
+        for rank, (chunk, _distance) in enumerate(chunks, start=1)
+    ]
 
     context = "\n\n---\n\n".join(blocks)
     return f"CONTEXT:\n\n{context}\n\n---\n\nQUESTION: {question}\n\nANSWER:"
@@ -166,11 +258,9 @@ async def prepare_answer(
 
     retrieved = await retrieve(session, ollama, question, top_k)
 
-    relevant = [
-        (chunk, distance)
-        for chunk, distance in retrieved
-        if distance <= settings.max_distance
-    ]
+    relevant = select_context(
+        retrieved, settings.max_distance, settings.context_max_distance
+    )
     # The word lookup is cheap, so it also runs for a question the distance gate
     # refused: the reply can then say *which* words no document contains. It
     # only changes the outcome ("refuse") for a question the gate let through.
@@ -212,6 +302,21 @@ async def prepare_answer(
             unknown_terms=unknown_terms,
         )
 
+    # The answer check runs last, on exactly the passages the answer would get,
+    # and only for questions every cheaper gate let through.
+    answer_check: str | None = None
+    if settings.answer_check != "off":
+        answer_check = await check_answerable(ollama, question, relevant)
+        if settings.answer_check == "refuse" and answer_check == CHECK_NO:
+            return PreparedAnswer(
+                question=question,
+                refused=True,
+                chunks=relevant,
+                refusal_reason=REASON_NOT_IN_CONTEXT,
+                unknown_terms=unknown_terms,
+                answer_check=answer_check,
+            )
+
     active = system_prompt()
     prompt = build_prompt(question, relevant)
     warn_if_prompt_may_not_fit(active.text, prompt)
@@ -223,6 +328,7 @@ async def prepare_answer(
         prompt=prompt,
         prompt_version=active.version,
         unknown_terms=unknown_terms,
+        answer_check=answer_check,
     )
 
 
@@ -230,7 +336,7 @@ def verify_prepared(prepared: PreparedAnswer, answer: str) -> Verification | Non
     """Check `answer` against the passages that were in its prompt (None if off)."""
     if get_settings().verify_mode == "off":
         return None
-    passages = [chunk.content for chunk, _distance in prepared.chunks]
+    passages = [context_block(chunk) for chunk, _distance in prepared.chunks]
     return verify_answer(answer, passages, prepared.question)
 
 
@@ -253,6 +359,7 @@ async def answer_question(
             chunks=prepared.chunks,
             refusal_reason=prepared.refusal_reason,
             unknown_terms=prepared.unknown_terms,
+            answer_check=prepared.answer_check,
         )
 
     assert prepared.system is not None and prepared.prompt is not None
@@ -276,6 +383,7 @@ async def answer_question(
             refusal_reason=REASON_UNVERIFIED,
             unknown_terms=prepared.unknown_terms,
             verification=verification,
+            answer_check=prepared.answer_check,
         )
     return AnswerResult(
         question=question,
@@ -285,6 +393,7 @@ async def answer_question(
         prompt_version=prepared.prompt_version,
         unknown_terms=prepared.unknown_terms,
         verification=verification,
+        answer_check=prepared.answer_check,
     )
 
 

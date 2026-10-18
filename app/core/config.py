@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +23,15 @@ class Settings(BaseSettings):
 
     # Retrieval / generation
     top_k: int = 5
+    # Refusal gate: the question is answered only if some retrieved chunk is
+    # at least this close. Structural: otherwise the model is never called.
     max_distance: float = 0.48
+    # What the model reads once a question has passed the gate: every retrieved
+    # chunk up to this distance (never tighter than max_distance). None = same
+    # as max_distance. Lets an answer chunk ranked just past the gate (0.495)
+    # reach the model without letting a question whose *closest* chunk is 0.495
+    # through. Measure with `python -m evals.doc_eval --context-max-distance`.
+    context_max_distance: float | None = None
     temperature: float = 0.2
 
     # Hybrid retrieval (Phase 1): BM25-style keyword search fused with
@@ -63,6 +72,16 @@ class Settings(BaseSettings):
     # "refuse" needs at least this many unknown words. 1 is strictest; 2 spares
     # a question that merely uses one word the manual does not (measure first).
     answerability_min_unknown: int = 1
+
+    # Answer check: before writing an answer, ask the model (one short call,
+    # prompt app/prompts/answer_check.*) whether the passages it would read
+    # answer the question. Catches near-topic questions the distance gate and
+    # the word check cannot ("torque for a helicopter rotor bolt" next to the
+    # torque table). "off"; "flag" = report `answer_check` (yes/no/unclear);
+    # "refuse" = also refuse on "no" (refusal_reason "not_in_context"). Costs one
+    # extra model call per answered question. Measure with
+    # `python -m evals.live_eval` before choosing "refuse".
+    answer_check: Literal["off", "flag", "refuse"] = "off"
 
     # Verification of the answer's numbers against the passages it cites.
     # "flag" = report numbers/units the cited passages do not contain;
@@ -123,6 +142,10 @@ class Settings(BaseSettings):
     # re-ingested with `scripts/ingest_pdfs.py --replace`) while it is on.
     # Measure with `python -m evals.doc_eval` before and after.
     chunk_by_paragraph: bool = False
+    # Join words the PDF text layer split apart ("C onduits wi ll" -> "Conduits
+    # will"), judged by the document's own vocabulary. On AC 43.13-1B: 142 joins,
+    # none wrong. New ingests only (re-ingest with --replace).
+    pdf_repair_split_words: bool = False
     # Chunks embedded per Ollama call.
     embed_batch_size: int = 8
     # OCR for pages with no text layer (scanned PDFs). Off by default: it needs
@@ -140,6 +163,14 @@ class Settings(BaseSettings):
     breaker_recovery_seconds: float = 30.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("context_max_distance", "llm_num_ctx", mode="before")
+    @classmethod
+    def _blank_means_unset(cls, value):
+        """`CONTEXT_MAX_DISTANCE=` (empty) in .env means "not set", not an error."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def database_url(self) -> str:

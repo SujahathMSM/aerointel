@@ -651,3 +651,28 @@ async def test_real_database_search_returns_the_page(db_session):
     assert top.id == target.id and distance < 1e-6
     assert (top.page, top.page_label, top.document_id) == (2, "1-2", result.document_id)
     assert "page 1-2 (PDF page 2)" in build_prompt("q?", [(top, distance)])
+
+
+async def test_the_split_word_setting_reaches_the_stored_text(no_existing, monkeypatch):
+    pdf = make_pdf(
+        [
+            ["Conduits must drain. Conduits are checked often by the crew."],
+            ["c. C onduits are inspected at every annual inspection here."],
+        ]
+    )
+    session = FakeSession()
+    await ingest_pdf(session, FakeOllama(), pdf, "a.pdf")
+    plain = [o for o in session.added if isinstance(o, DocumentChunk)]
+    assert any("C onduits" in c.content for c in plain)
+    assert {c.metadata_["word_repair"] for c in plain} == {False}
+
+    monkeypatch.setattr(
+        documents,
+        "get_settings",
+        lambda: get_settings().model_copy(update={"pdf_repair_split_words": True}),
+    )
+    session = FakeSession()
+    await ingest_pdf(session, FakeOllama(), pdf, "a.pdf")
+    repaired = [o for o in session.added if isinstance(o, DocumentChunk)]
+    assert any("c. Conduits are inspected" in c.content for c in repaired)
+    assert {c.metadata_["word_repair"] for c in repaired} == {True}

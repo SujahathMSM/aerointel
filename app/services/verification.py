@@ -73,6 +73,12 @@ _NUMBER_WITH_UNIT = re.compile(
     rf"(?:\s*-?\s*(?P<unit>{_UNIT_RE}))?",
     re.IGNORECASE,
 )
+# "min" after a number is minutes in running text ("dwell time 10 min") and
+# minimum in tables ("0.057 min."). A passage's "min" is therefore compatible
+# with any unit that is not a time; against another time unit it still counts.
+_AMBIGUOUS_MIN = "min"
+_TIME_UNITS = {"h", "min", "s"}
+
 _CITATION = re.compile(r"\[\s*(\d+(?:\s*[,\-–]\s*\d+)*)\s*\]")
 _LIST_MARKER = re.compile(r"(?m)^\s*\d+[.)]\s+")
 
@@ -98,6 +104,11 @@ class Verification:
     unsupported: list[str] = field(default_factory=list)
     unit_mismatch: list[str] = field(default_factory=list)
     bad_citations: list[int] = field(default_factory=list)
+    # Unsupported figures that *do* occur in a block the answer did not cite:
+    # figure as written -> those block numbers. Usually a wrong citation (the
+    # answer read block 3, cited block 2), not an invented number. The figure
+    # stays in `unsupported`: the cited block still does not back it.
+    found_in_uncited: dict[str, list[int]] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -191,6 +202,12 @@ def verify_answer(answer: str, passages: list[str], question: str = "") -> Verif
                 source_units[value].add(unit)
     echoed = {value for value, _u, _w in numbers_in(question)}
 
+    uncited = {
+        n: {value for value, _u, _w in numbers_in(passages[n - 1])}
+        for n in range(1, len(passages) + 1)
+        if good and n not in good
+    }
+
     result = Verification(cited=good, bad_citations=bad)
     for value, unit, written in numbers_in(answer):
         result.checked += 1
@@ -199,11 +216,21 @@ def verify_answer(answer: str, passages: list[str], question: str = "") -> Verif
         if value not in source_units:
             if written not in result.unsupported:
                 result.unsupported.append(written)
+                where = [n for n, found in uncited.items() if value in found]
+                if where:
+                    result.found_in_uncited[written] = where
         elif (
             unit
             and source_units[value]
-            and unit not in source_units[value]
+            and not _units_compatible(unit, source_units[value])
             and written not in result.unit_mismatch
         ):
             result.unit_mismatch.append(written)
     return result
+
+
+def _units_compatible(unit: str, source_units: set[str]) -> bool:
+    """Is the answer's unit one the passage gives this number?"""
+    if unit in source_units:
+        return True
+    return _AMBIGUOUS_MIN in source_units and unit not in _TIME_UNITS

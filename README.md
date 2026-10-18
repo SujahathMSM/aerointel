@@ -345,7 +345,14 @@ What happens to a file:
 3. **OCR (optional).** Pages with no text layer are read with tesseract if
    `OCR_ENABLED=true`. Without OCR, a fully scanned PDF is rejected with a clear
    message instead of being stored empty.
-4. **Chunking.** Each page is cut into chunks of about `CHUNK_MAX_CHARS`
+4. **Split words.** Some text layers put a space inside a word ("C onduits wi ll",
+   "Kink ing", "CA UTION"). With `PDF_REPAIR_SPLIT_WORDS=true` two neighbouring
+   pieces are joined when the joined word occurs elsewhere in the same document
+   and one piece is rare on its own, so "a round hole" stays as it is. On AC
+   43.13-1B this makes 142 joins, none of them wrong; it matters for keyword
+   search, which cannot match "conduits" against "C onduits". Off by default;
+   new ingests only.
+5. **Chunking.** Each page is cut into chunks of about `CHUNK_MAX_CHARS`
    (1200) characters ending on sentence boundaries, with `CHUNK_OVERLAP_CHARS`
    (150) repeated at the start of the next one. A chunk never crosses a page, so
    every citation names exactly one page. With `CHUNK_BY_PARAGRAPH=true` (off by
@@ -357,7 +364,7 @@ What happens to a file:
    and a heading within 200 characters of the previous cut stays with it, so a
    section title keeps its first paragraph. Each chunk records how it was cut
    (`metadata.chunking`: `sentences` or `paragraphs`).
-5. **Storing.** All chunks are embedded in batches, then the document and its
+6. **Storing.** All chunks are embedded in batches, then the document and its
    chunks are written in one transaction: a file is fully ingested or not at all.
    The database connection is released before the slow reading and embedding.
    `ingest_pdfs.py --replace` re-ingests a file that is already stored (to apply
@@ -398,10 +405,25 @@ followed in the prompt by the chunk after it from the same document.
   `context_hit` (is a right page among what the model would read?) and the
   prompt size.
 
+#### Reading past the gate: `CONTEXT_MAX_DISTANCE` (off by default)
+
+`MAX_DISTANCE` answers two questions at once unless told otherwise: *answer at
+all?* and *which chunks does the model read?* Two misses on the FAA manual came
+from the second. The weld question passed the gate on one chunk (0.422), but the
+chunk holding the answer ranked second at 0.495 and was dropped; the titanium
+question lost its answer chunk at 0.486 the same way. With
+`CONTEXT_MAX_DISTANCE=0.52` the gate is unchanged (a question whose *closest*
+chunk is 0.495 is still refused, and the model is never called), but a question
+that passes reads every retrieved chunk up to 0.52. A value below `MAX_DISTANCE`
+is ignored; blank means "same as the gate". Measure it:
+`python -m evals.doc_eval --retriever hybrid --context-max-distance 0.52`.
+`--show` marks each retrieved chunk `[read]` or `[not read]`.
+
 ### Checking the answer (trust layer)
 
 Two checks that need no extra model call, both reported in the `/v1/query`
-response (and, for the stream, in `meta` and a `verification` event).
+response (and, for the stream, in `meta` and a `verification` event), and an
+optional third that costs one short model call.
 
 **Figures must be in the cited passages** (`VERIFY_MODE`, default `flag`). Every
 number in the answer (0.032, 3/8, 1,000, 20-25) is looked up in the passages the
@@ -441,6 +463,26 @@ aviation questions the distance gate let through (carbon fiber propeller,
 helicopter rotor bolt) use only words the manual contains, so it does not catch them;
 and it wrongly refuses one right question that uses a word the manual does not
 ("judging"). Keep it at `off` or `flag` until the golden set is larger.
+
+**Does the context answer it?** (`ANSWER_CHECK`, default `off`). The near-topic
+question has every word in the manual and sits as close to it as a real question
+does, so neither check above can see it. Only reading the passages can. With
+`ANSWER_CHECK=flag` the model is first asked, with the same numbered passages
+it would answer from, to reply YES or NO (prompt `app/prompts/answer_check.v1.txt`);
+the reply is reported as `answer_check` (`yes`, `no` or `unclear`) in the
+response and in the stream's `meta`. `refuse` also refuses on `no`
+(`refusal_reason: "not_in_context"`) without writing an answer. An unreadable
+reply counts as `unclear` and never refuses. It runs only for questions the
+distance gate and the word check let through, and adds one model call (about as
+long as a short answer) to each of them.
+
+It must be measured on the live model before `refuse` is used: a check that says
+NO to right questions is worse than none. `python -m evals.live_eval` runs every
+golden and off-topic question through the real model and reports how often the
+check says NO to right questions (wrong refusals) and to off-topic ones the gate
+let through (catches), whether the written answers to off-topic questions decline
+(prompt rule 2), and which right answers the figure check flags (each one a
+candidate false alarm; the answers are saved with `--save` so they can be read).
 
 To see why a question retrieves what it does:
 
@@ -581,12 +623,14 @@ against a real pgvector service container on every push.
 | `tests/test_search_synthetic.py` | pgvector ranks by meaning using orthogonal synthetic vectors — no real embedding model needed to prove the math | Postgres only (CI) |
 | `tests/test_rag_local.py` | Full grounding contract with real Ollama: matched question → cited answer, unmatched question → refusal | Ollama + Postgres |
 | `tests/test_streaming.py` | Ollama stream parsing (ordering, whitespace trimming equals `chat()`, error lines, retry/circuit rules, connection closed on early stop); SSE format; the `/v1/query/stream` event sequence, refusal never reaching the model, in-band errors that don't leak, auth/scope/validation, and client disconnect ending generation (ASGI 2.3 and 2.4 styles) | Redis for the endpoint tests |
-| `tests/test_pdf_text.py` | Page-number reading, header/footer removal, hyphenation, sentence-bound chunking with overlap, paragraph-aware chunking (the real page 349 titanium case, captions and references that are not headings, sliver folding), chunks never crossing pages, unreadable/encrypted/scanned PDFs, and real OCR on a scanned page | nothing (OCR test needs tesseract + PyMuPDF, else skipped) |
+| `tests/test_pdf_text.py` | Page-number reading, header/footer removal, hyphenation, sentence-bound chunking with overlap, paragraph-aware chunking (the real page 349 titanium case, captions and references that are not headings, sliver folding), split-word repair (real splits from the manual, two real words left alone), chunks never crossing pages, unreadable/encrypted/scanned PDFs, and real OCR on a scanned page | nothing (OCR test needs tesseract + PyMuPDF, else skipped) |
 | `tests/test_documents.py` | PDF ingestion service (dedup, connection released before embedding, batches, concurrent-upload race, nothing half-stored, the chunking setting reaching the chunker, `--replace` deleting the old copy in the same write), the upload endpoint (type, size, scope), page info in search results and prompts, and against real Postgres: duplicate skip, page provenance, cascade delete, replace swapping the stored copy, a failed replace keeping the old one | Redis (endpoint), Postgres (integration) |
 | `tests/test_context.py` | Which following chunks are planned (budget spread over the hits, no duplicates), widening after the distance gate and before the session is released, refusals untouched, the context-window warning, `num_ctx` sent only when set, and against real Postgres: neighbour order, document boundaries, last chunk | Postgres (integration) |
+| `tests/test_context_ceiling.py` | The reading limit (an answer chunk past the gate is read only when the question passed on another chunk; never tightens the gate; hybrid order), the answer check (reply parsing, `off`/`flag`/`refuse` call order, never runs for a refused question, judges the widened set) and its `/v1/query` and stream fields | Redis for the endpoint tests |
+| `tests/test_live_eval.py` | The live eval's decline heuristic and counts, and one full run against fakes | nothing |
 | `tests/test_verification.py` | Number extraction (decimals, fractions, thousands, ranges, units, identifiers), a faithful answer passing, one altered digit or unit caught, citations, question echo, `flag`/`block`/`off` through `answer_question`, and the `/v1/query` response shape | Redis for the endpoint tests |
 | `tests/test_answerability.py` | Which question words are tested, spelling variants, the word counts against real Postgres (invented words), and `prepare_answer`: `refuse` never builds a prompt, `flag` reports, `off` never looks, a question the distance gate refused is not checked | Postgres (integration) |
-| `tests/test_doc_eval.py` | Page-based scoring (hit, rank, reaches-the-prompt, context hit), off-topic refusal, the `MAX_DISTANCE` sweep and suggested ceiling, the answerability sweep and combined sweep, the `--show` text, and the golden file's well-formedness | nothing |
+| `tests/test_doc_eval.py` | Page-based scoring (hit, rank, reaches-the-prompt, context hit), gate judged on the closest *served* chunk, the reading limit in scoring and sweeps, old result files still readable, off-topic refusal, the `MAX_DISTANCE` sweep and suggested ceiling, the answerability sweep and combined sweep, the `--show` text, and the golden file's well-formedness | nothing |
 | `tests/test_eval_metrics.py` | Eval metric math (recall@k, MRR, aggregation) + golden-set well-formedness | nothing |
 
 ## Retrieval evals (the scoreboard)

@@ -8,14 +8,17 @@ retrieved chunk is a hit when it comes from one of those pages.
     python -m evals.doc_eval                          # vector search baseline
     python -m evals.doc_eval --retriever hybrid       # + keyword search (RRF)
     python -m evals.doc_eval --neighbors 1            # + the chunk after each hit
+    python -m evals.doc_eval --context-max-distance 0.52   # read past the gate
     python -m evals.doc_eval --save evals/results/baseline.json
 
 Needs Postgres with the document ingested (scripts/ingest_pdfs.py) and Ollama
 running for the embedding model. It reports four things:
 
 - recall@k / MRR: does the right page show up, and how high?
-- reaches prompt: does a right-page chunk pass the MAX_DISTANCE gate, i.e. is
-  the question answered rather than refused?
+- reaches prompt: does the question pass the MAX_DISTANCE gate *and* is a
+  right-page chunk among what the model reads (up to the context ceiling)?
+  Gate and context are computed on a top_k retrieval, exactly as the API does
+  it; recall and rank use a deeper top-10 retrieval.
 - context hit and answer facts: is a right page among the chunks the model would
   actually read (after widening, with --neighbors), and do the key phrases of the
   answer appear in them? Retrieving the right page can still leave out the
@@ -47,7 +50,7 @@ from app.db.models import DocumentChunk
 from app.llm.ollama import OllamaClient
 from app.services.answerability import question_terms, term_chunk_counts
 from app.services.context import expand_with_neighbours
-from app.services.generation import CHARS_PER_TOKEN
+from app.services.generation import CHARS_PER_TOKEN, context_ceiling, select_context
 from app.services.pipeline import retrieve
 from app.services.reranking import build_reranker
 from evals.metrics import hit_recall_at_k, hit_reciprocal_rank
@@ -94,23 +97,41 @@ def score_item(
     max_distance: float,
     context: list[tuple] | None = None,
     facts: list[str] | None = None,
+    served: list[tuple] | None = None,
+    context_max_distance: float | None = None,
 ) -> dict:
     """Score one answerable question from its ranked (chunk, distance) results.
 
-    `context` is what the model would be given (the hits that pass the distance
-    gate, widened if neighbours are on); `facts` are phrases its answer needs.
+    `results` is the deep ranking (recall, rank). `served` is what the API
+    retrieves (top_k): the gate and the context ceiling are judged on it; it
+    defaults to `results`. `context` is what the model would be given (after
+    widening, if neighbours are on); `facts` are phrases its answer needs.
     """
+    served = results if served is None else served
     hits = [is_hit(chunk, source, pages) for chunk, _ in results]
     rank = next((r for r, hit in enumerate(hits, 1) if hit), None)
     hit_distances = [d for (_, d), hit in zip(results, hits, strict=True) if hit]
     best_hit = min(hit_distances) if hit_distances else None
+    gate = gate_distance(served)
+    served_hits = [d for c, d in served if is_hit(c, source, pages)]
+    served_hit = min(served_hits) if served_hits else None
+    ceiling = context_ceiling(max_distance, context_max_distance)
     row = {
         "rank": rank,
         "best_hit_distance": best_hit,
         "top_distance": results[0][1] if results else None,
+        # the closest chunk the API retrieves: the question passes the gate
+        # when this is within MAX_DISTANCE
+        "gate_distance": gate,
+        # the closest right-page chunk the API retrieves (None: not in top_k)
+        "served_hit_distance": served_hit,
         "rr": hit_reciprocal_rank(hits),
-        # a right-page chunk that gets past the distance gate and into the prompt
-        "reaches_prompt": best_hit is not None and best_hit <= max_distance,
+        # the question passes the gate and a right-page chunk is in what the
+        # model reads
+        "reaches_prompt": gate is not None
+        and gate <= max_distance
+        and served_hit is not None
+        and served_hit <= ceiling,
     }
     for k in SCORED_K_VALUES:
         row[f"recall@{k}"] = hit_recall_at_k(hits, k)
@@ -123,9 +144,43 @@ def score_item(
     return row
 
 
+def gate_distance(results: list[tuple]) -> float | None:
+    """The distance the refusal gate judges: the closest retrieved chunk.
+
+    Not simply the first result: with hybrid search the order is the fused
+    rank, and a chunk ranked third can be closer than the first.
+    """
+    return min((d for _, d in results), default=None)
+
+
 def score_off_topic(results: list[tuple], max_distance: float) -> dict:
-    top = results[0][1] if results else None
-    return {"top_distance": top, "refused": top is None or top > max_distance}
+    """`results` is what the API retrieves (top_k); refused = nothing passes."""
+    gate = gate_distance(results)
+    return {
+        "top_distance": results[0][1] if results else None,
+        "gate_distance": gate,
+        "refused": gate is None or gate > max_distance,
+    }
+
+
+def _gate(row: dict) -> float | None:
+    """Gate distance of a saved row (older result files only have top_distance)."""
+    return row.get("gate_distance", row.get("top_distance"))
+
+
+def _answer_distance(row: dict) -> float | None:
+    """Distance of the right-page chunk the model would read (older files: best hit)."""
+    if "served_hit_distance" in row:
+        return row["served_hit_distance"]
+    return row.get("best_hit_distance")
+
+
+def _reaches(row: dict, gate_at: float, context_max_distance: float | None) -> bool:
+    """Would this right question pass a gate at `gate_at` with its answer read?"""
+    gate, answer = _gate(row), _answer_distance(row)
+    if gate is None or answer is None:
+        return False
+    return gate <= gate_at and answer <= context_ceiling(gate_at, context_max_distance)
 
 
 def unknown_words(counts: dict[str, int], min_chunks: int) -> list[str]:
@@ -177,13 +232,20 @@ def describe_retrieval(
     facts: list[str] | None,
     limit: int = 5,
     width: int = 320,
+    read: list[tuple] | None = None,
 ) -> str:
-    """Readable dump of what was retrieved for one question (for --show)."""
+    """Readable dump of what was retrieved for one question (for --show).
+
+    `read`: the chunks the model would be given; those are marked "[read]".
+    """
     lines = [f"--- {item_id}: {question}"]
     if pages:
         lines.append(f"    expected PDF page(s): {pages}")
+    read_ids = {id(chunk) for chunk, _ in read} if read is not None else None
     for rank, (chunk, distance) in enumerate(results[:limit], 1):
         mark = "  <- right page" if pages and is_hit(chunk, source, pages) else ""
+        if read_ids is not None:
+            mark += "  [read]" if id(chunk) in read_ids else "  [not read]"
         label = getattr(chunk, "page_label", None)
         where = f"PDF p.{getattr(chunk, 'page', '?')}" + (
             f" ({label})" if label else ""
@@ -301,21 +363,24 @@ def summarise(rows: list[dict], off_topic: list[dict]) -> dict:
 
 
 def threshold_sweep(
-    rows: list[dict], off_topic: list[dict], low: float = 0.30, high: float = 0.80
+    rows: list[dict],
+    off_topic: list[dict],
+    low: float = 0.30,
+    high: float = 0.80,
+    context_max_distance: float | None = None,
 ) -> list[dict]:
     """For each candidate MAX_DISTANCE: how many right pages get through, and
-    how many off-topic questions are still refused."""
+    how many off-topic questions are still refused.
+
+    A right page gets through when the question passes the gate and the
+    right-page chunk is within the context ceiling (the gate, or
+    `context_max_distance` if that is looser)."""
     sweep = []
     steps = round((high - low) / 0.02)
     for i in range(steps + 1):
         ceiling = round(low + 0.02 * i, 2)
-        reach = sum(
-            r["best_hit_distance"] is not None and r["best_hit_distance"] <= ceiling
-            for r in rows
-        )
-        refused = sum(
-            r["top_distance"] is None or r["top_distance"] > ceiling for r in off_topic
-        )
+        reach = sum(_reaches(r, ceiling, context_max_distance) for r in rows)
+        refused = sum(_gate(r) is None or _gate(r) > ceiling for r in off_topic)
         sweep.append(
             {
                 "max_distance": ceiling,
@@ -333,6 +398,7 @@ def combined_sweep(
     min_unknown: int,
     low: float = 0.40,
     high: float = 0.62,
+    context_max_distance: float | None = None,
 ) -> list[dict]:
     """Like `threshold_sweep`, with the vocabulary rule switched on.
 
@@ -350,13 +416,11 @@ def combined_sweep(
     for i in range(steps + 1):
         ceiling = round(low + 0.02 * i, 2)
         reach = sum(
-            r["best_hit_distance"] is not None
-            and r["best_hit_distance"] <= ceiling
-            and not vocab_refuses(r)
+            _reaches(r, ceiling, context_max_distance) and not vocab_refuses(r)
             for r in rows
         )
         refused = sum(
-            r["top_distance"] is None or r["top_distance"] > ceiling or vocab_refuses(r)
+            _gate(r) is None or _gate(r) > ceiling or vocab_refuses(r)
             for r in off_topic
         )
         sweep.append(
@@ -495,6 +559,7 @@ async def run(
     save: Path | None,
     min_recall5: float | None,
     show: set[str] | None = None,
+    context_max_distance: float | None = None,
 ) -> int:
     golden = load_golden()
     source = golden["source"]
@@ -518,25 +583,26 @@ async def run(
                 )
                 return 2
 
-            async def ask(question: str) -> list[tuple]:
+            async def ask(question: str, k: int = RETRIEVE_K) -> list[tuple]:
                 return await retrieve(
                     session,
                     ollama,
                     question,
-                    RETRIEVE_K,
+                    k,
                     hybrid=(retriever == "hybrid"),
                     reranker=active_reranker,
                 )
 
             for item in golden["items"]:
                 results = await ask(item["question"])
-                # what the model would read: the hits that pass the gate,
-                # widened exactly as the API does it
-                context = [
-                    (c, d)
-                    for c, d in results[: settings.top_k]
-                    if d <= settings.max_distance
-                ]
+                # What the API retrieves: a top_k search, not the first top_k of
+                # a deeper one (hybrid fuses different candidate lists then).
+                served = await ask(item["question"], settings.top_k)
+                # what the model would read: the gate, the context ceiling and
+                # widening, exactly as the API does it
+                context = select_context(
+                    served, settings.max_distance, context_max_distance
+                )
                 if neighbors:
                     context = await expand_with_neighbours(
                         session, context, neighbors, max_chunks
@@ -548,27 +614,30 @@ async def run(
                     settings.max_distance,
                     context,
                     item.get("facts"),
+                    served=served,
+                    context_max_distance=context_max_distance,
                 )
                 row["term_counts"] = await term_chunk_counts(
                     session, question_terms(item["question"])
                 )
                 per_item.append({"id": item["id"], "question": item["question"], **row})
                 if show and ("all" in show or item["id"] in show):
-                    # show the chunks the model would read, then the raw ranking
+                    # what the API retrieves, marked with what the model reads
                     print(
                         describe_retrieval(
                             item["id"],
                             item["question"],
-                            results,
+                            served,
                             source,
                             item["pages"],
                             item.get("facts"),
                             limit=settings.top_k,
+                            read=context,
                         )
                     )
 
             for item in golden.get("off_topic", []):
-                results = await ask(item["question"])
+                results = await ask(item["question"], settings.top_k)
                 off_topic.append(
                     {
                         "id": item["id"],
@@ -589,16 +658,22 @@ async def run(
                             None,
                             None,
                             limit=settings.top_k,
+                            read=select_context(
+                                results, settings.max_distance, context_max_distance
+                            ),
                         )
                     )
     finally:
         await ollama.close()
 
     summary = summarise(per_item, off_topic)
-    sweep = threshold_sweep(per_item, off_topic)
+    sweep = threshold_sweep(
+        per_item, off_topic, context_max_distance=context_max_distance
+    )
     label = (
         f"retriever={retriever}  reranker={reranker}  neighbors={neighbors}  "
-        f"max_distance={settings.max_distance}  top_k={settings.top_k}"
+        f"max_distance={settings.max_distance}  "
+        f"context_max_distance={context_max_distance}  top_k={settings.top_k}"
     )
     print_report(per_item, off_topic, summary, label)
     print_threshold(sweep, settings.max_distance)
@@ -611,6 +686,7 @@ async def run(
         off_topic,
         settings.answerability_min_chunks,
         settings.answerability_min_unknown,
+        context_max_distance=context_max_distance,
     )
     print_answerability(
         per_item,
@@ -673,6 +749,13 @@ if __name__ == "__main__":
         help="print the retrieved chunks for this question id (repeatable; 'all' = every question)",
     )
     parser.add_argument(
+        "--context-max-distance",
+        type=float,
+        default=get_settings().context_max_distance,
+        help="give the model retrieved chunks up to this distance once the question "
+        "passed MAX_DISTANCE (default: CONTEXT_MAX_DISTANCE; unset = the gate)",
+    )
+    parser.add_argument(
         "--min-recall5",
         type=float,
         help="exit 1 if mean recall@5 is below this (for use as a gate)",
@@ -688,6 +771,7 @@ if __name__ == "__main__":
                 args.save,
                 args.min_recall5,
                 set(args.show) if args.show else None,
+                args.context_max_distance,
             )
         )
     )

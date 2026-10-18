@@ -27,6 +27,8 @@ class VerificationOut(BaseModel):
     unsupported: list[str] = []  # figures no cited passage contains
     unit_mismatch: list[str] = []  # figure present, but with another unit
     bad_citations: list[int] = []  # [n] pointing at a block that does not exist
+    # unsupported figure -> uncited blocks that contain it (likely a wrong citation)
+    found_in_uncited: dict[str, list[int]] = {}
     blocked: bool = False  # the answer was withheld because of the above
 
 
@@ -40,10 +42,15 @@ class QueryResponse(BaseModel):
     # prompt was used because the model was never called.
     prompt_version: str | None = None
     # Why a refusal happened: "too_far" (nothing close enough), "unknown_terms"
-    # (a word in the question appears in no stored chunk) or "unverified_numbers"
-    # (the answer was withheld because its figures are not in the cited passages).
+    # (a word in the question appears in no stored chunk), "not_in_context" (the
+    # answer check judged that the passages do not answer it) or
+    # "unverified_numbers" (the answer was withheld because its figures are not
+    # in the cited passages).
     refusal_reason: str | None = None
     # Question words found in no stored chunk. Reported on answers too: an answer
     # to a question with an unknown word is probably about something else.
     unknown_terms: list[str] = []
     verification: VerificationOut | None = None
+    # The model's own judgement, before answering, of whether the passages
+    # answer the question: "yes", "no" or "unclear". None when ANSWER_CHECK=off.
+    answer_check: str | None = None

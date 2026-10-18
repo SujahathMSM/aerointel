@@ -2,6 +2,7 @@
 
 import io
 import itertools
+from collections import Counter
 
 import pytest
 from pypdf import PdfWriter
@@ -17,9 +18,11 @@ from app.services.pdf_text import (
     extract_pages,
     find_page_label,
     join_lines,
+    repair_split_words,
     split_paragraphs,
     split_sentences,
     strip_repeated_edges,
+    word_counts,
 )
 from tests.pdf_helpers import make_pdf, make_scanned_pdf
 
@@ -477,3 +480,66 @@ def test_real_ocr_reads_a_scanned_page():
 def test_ocr_rejects_a_language_that_could_inject_arguments():
     with pytest.raises(ValueError):
         ocr_pages(b"%PDF-", [1], "eng -c tessedit_write_images=1")
+
+
+# ------------------------------------------------------------ split words
+
+
+# Real splits from AC 43.13-1B's text layer, with the document's own counts.
+MANUAL_COUNTS = Counter(
+    {
+        "c": 498, "onduits": 1, "conduits": 12, "wi": 1, "ll": 2, "will": 552,
+        "kink": 4, "ing": 2, "kinking": 9, "ca": 3, "ution": 1, "caution": 64,
+        "a": 3924, "ircraft": 1, "aircraft": 889, "round": 30, "hole": 80,
+        "around": 40, "per": 300, "mil": 1, "permil": 3, "rive": 2, "ts": 3,
+        "rivets": 185,
+    }
+)  # fmt: skip
+
+
+def test_split_words_are_joined_when_the_document_spells_them_whole():
+    assert (
+        repair_split_words("c. C onduits wi ll not trap fluids.", MANUAL_COUNTS)
+        == "c. Conduits will not trap fluids."
+    )
+    assert repair_split_words("e. Kink ing of wire", MANUAL_COUNTS) == (
+        "e. Kinking of wire"
+    )
+    assert repair_split_words("CA UTION: hot", MANUAL_COUNTS) == "CAUTION: hot"
+    assert repair_split_words("(a ircraft)", MANUAL_COUNTS) == "(aircraft)"
+    assert repair_split_words("solid rive ts.", MANUAL_COUNTS) == "solid rivets."
+
+
+def test_two_real_words_stay_two_words():
+    # "around" is a word, but "round" is common on its own: not a split
+    assert repair_split_words("drill a round hole", MANUAL_COUNTS) == (
+        "drill a round hole"
+    )
+    # a lower-case word then a capital is a word boundary, not a split
+    assert repair_split_words("per Mil spec", MANUAL_COUNTS) == "per Mil spec"
+
+
+def test_unknown_joins_and_punctuated_pieces_are_left_alone():
+    counts = Counter({"ab": 1, "cd": 1})  # "abcd" never occurs whole
+    assert repair_split_words("ab cd", counts) == "ab cd"
+    assert repair_split_words("wi. ll", MANUAL_COUNTS) == "wi. ll"  # sentence end
+    assert repair_split_words("", MANUAL_COUNTS) == ""
+
+
+def test_counts_come_from_the_whole_document():
+    counts = word_counts(["Conduits drain.", "The conduits", "C onduits wi ll"])
+    assert counts["conduits"] == 2 and counts["onduits"] == 1
+    assert repair_split_words("C onduits", counts) == "Conduits"
+
+
+def test_extract_pages_repairs_only_when_asked():
+    lines = [
+        ["Conduits must drain. Conduits are checked often."],
+        ["c. C onduits are inspected at every annual inspection here."],
+    ]
+    pdf = make_pdf(lines)
+    plain = extract_pages(pdf)
+    repaired = extract_pages(pdf, repair_words=True)
+    assert "C onduits" in plain[1].text
+    assert "c. Conduits are inspected" in repaired[1].text
+    assert repaired[0].text == plain[0].text

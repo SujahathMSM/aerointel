@@ -50,6 +50,7 @@ python -m evals.run_eval
 python -m evals.run_eval --retriever hybrid --reranker crossencoder --faithfulness
 python -m evals.doc_eval [--retriever hybrid] [--neighbors 1] [--show ID|all]   # real documents, scored by page (needs the FAA manual ingested)
 python scripts/ingest_pdfs.py data/aviation [--dry-run] [--replace]   # ingest PDFs; --replace re-chunks stored ones
+python -m evals.live_eval [--retriever hybrid] [--check-only] [--save F]   # trust layer on the live model (needs Ollama)
 
 # Embedding version migration (rows are tagged with embedding_model; never silently mix models)
 python scripts/backfill_embeddings.py --dry-run
@@ -121,6 +122,8 @@ the pooled connection), `services/pdf_text.py` (pypdf text, repeated header/foot
 removal, printed page labels, sentence-bound chunks that never cross a page), optional
 `services/ocr.py` for blank pages, batched embedding, then one transaction writing the
 `documents` row and its chunks (`document_id`, `chunk_index`, `page`, `page_label`).
+`PDF_REPAIR_SPLIT_WORDS` (off) joins text-layer word splits in `extract_pages()`
+using the document's own word counts (`pdf_text.repair_split_words`).
 `CHUNK_BY_PARAGRAPH` (off by default) also cuts at numbered paragraph headings
 ("6-181. TITANIUM ...") and folds sliver chunks into the one before; each chunk's
 `metadata.chunking` says which way it was cut. It only affects new ingests:
@@ -138,6 +141,21 @@ an answer and never touches the DB later. `LLM_NUM_CTX` is sent to Ollama as
 `num_ctx`; Ollama silently truncates over-long prompts, so
 `warn_if_prompt_may_not_fit()` logs when one is near the window. Off by default;
 enable only after `python -m evals.doc_eval --neighbors 1`.
+
+Gate versus reading limit: `generation.select_context()` is the one place that
+decides both, used by `prepare_answer()`, `doc_eval` and `live_eval`. The question
+is answered only if some retrieved chunk is within `MAX_DISTANCE` (structural
+refusal, unchanged); the model then reads every retrieved chunk within
+`CONTEXT_MAX_DISTANCE` (never tighter than the gate; unset = the gate). `doc_eval`
+judges gate and context on a separate top_k retrieval (what the API serves) and
+rank/recall on a top-10 one; the gate distance is the *closest* served chunk, not
+the first (hybrid order is fused rank).
+
+Answer check (`ANSWER_CHECK` off|flag|refuse): one model call in
+`prepare_answer()`, after the gate, the word check and widening, on exactly the
+passages the answer would get; `parse_answer_check()` reads YES/NO from the first
+word, anything else is "unclear" and never refuses. `refuse` + NO returns a refused
+`PreparedAnswer` (`not_in_context`) so the answer is never generated or streamed.
 
 Trust layer (`services/verification.py`, `services/answerability.py`): after the
 model answers, `verify_answer()` checks every number in the answer against the

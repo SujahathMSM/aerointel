@@ -282,6 +282,7 @@ async def test_query_response_carries_the_verification(client, monkeypatch):
         "unsupported": ["900 °F"],
         "unit_mismatch": [],
         "bad_citations": [],
+        "found_in_uncited": {},
         "blocked": False,
     }
 
@@ -306,3 +307,121 @@ async def test_a_withheld_answer_is_a_refusal_with_its_reason(client, monkeypatc
     assert body["refusal_reason"] == "unverified_numbers"
     assert "900 °F" in body["refusal_message"]
     assert body["verification"]["blocked"] is True
+
+
+# --------------------------------------- page references from the source line
+
+TORQUE_TABLE = (
+    "TABLE 7-1. TORQUE VALUES IN INCH-POUNDS FOR TIGHTENING NUTS. "
+    "8-36 nut: 12-15 inch-pounds."
+)
+
+
+def _pdf_chunk(content, page, label):
+    chunk = _Chunk(content)
+    chunk.metadata_ = {"source": "AC_43.13-1B_CHG_1"}
+    chunk.page = page
+    chunk.page_label = label
+    return chunk
+
+
+def test_the_source_line_is_part_of_the_checked_block():
+    block = generation.context_block(_pdf_chunk(TORQUE_TABLE, 364, "7-9"))
+    assert block.startswith("Source: AC_43.13-1B_CHG_1, page 7-9 (PDF page 364)\n")
+    assert block.endswith(TORQUE_TABLE)
+    # The prompt shows the model exactly what the check reads.
+    prompt = generation.build_prompt("q", [(_pdf_chunk(TORQUE_TABLE, 364, "7-9"), 0.3)])
+    assert f"[1] {block}" in prompt
+
+
+async def test_a_page_copied_from_the_source_line_is_not_flagged(monkeypatch, mode):
+    # Live run 2026-10-17, default-torque-table: the answer named "PDF page 364"
+    # from the source line and the check flagged 364 as an unsupported figure.
+    mode("flag")
+    prepared = _prepared()
+    prepared.chunks = [(_pdf_chunk(TORQUE_TABLE, 364, "7-9"), 0.3)]
+    result = await _ask(
+        monkeypatch,
+        "Use Table 7-1 in AC_43.13-1B_CHG_1, page 7-9 (PDF page 364) [1].",
+        prepared,
+    )
+    assert result.verification is not None
+    assert result.verification.ok, result.verification
+
+
+async def test_a_page_from_an_uncited_block_is_still_flagged(monkeypatch, mode):
+    mode("flag")
+    prepared = _prepared()
+    prepared.chunks = [
+        (_pdf_chunk(TORQUE_TABLE, 364, "7-9"), 0.3),
+        (_pdf_chunk(TITANIUM, 349, "6-43"), 0.4),
+    ]
+    result = await _ask(monkeypatch, "See PDF page 349 [1].", prepared)
+    assert result.verification is not None
+    assert result.verification.unsupported == ["349"]
+
+
+async def test_a_wrong_figure_is_still_caught_next_to_a_page_reference(
+    monkeypatch, mode
+):
+    mode("flag")
+    prepared = _prepared()
+    prepared.chunks = [(_pdf_chunk(TORQUE_TABLE, 364, "7-9"), 0.3)]
+    result = await _ask(
+        monkeypatch,
+        "Page 7-9 (PDF page 364): torque it to 40 inch-pounds [1].",
+        prepared,
+    )
+    assert result.verification is not None
+    assert result.verification.unsupported == ["40 inch-pounds"]
+
+
+# ------------------------------- live query 2026-10-18: "safety wire diameter"
+
+# Real text of the two blocks: one sentence runs from page 7-19 onto 7-20.
+PAGE_7_19 = (
+    "b. When using double-twist method of safety wiring, .032-inch minimum "
+    "diameter wire should be used on parts that have a hole diameter larger than "
+    ".045 inch. Safety wire of .020-inch"
+)
+PAGE_7_20 = (
+    "diameter (double strand) may be used on parts having a nominal hole diameter "
+    "between .045 and .062 inch with a spacing between parts of less than 2 inches."
+)
+TABLE_7_8 = (
+    "Cable Size Type of Wrap Diameter of Safety Wire Material (Annealed Condition) "
+    "5/32 and greater Single 0.057 min. Stainless steel, Monel."
+)
+
+
+def test_min_in_a_table_is_minimum_not_minutes():
+    result = verify_answer("Single wrap: 0.057-inch minimum diameter [1].", [TABLE_7_8])
+    assert result.ok, result
+
+
+def test_min_still_counts_against_another_time_unit():
+    result = verify_answer("Let it dwell 10 seconds [1].", ["Dwell time is 10 min."])
+    assert result.unit_mismatch == ["10 seconds"]
+
+
+def test_minutes_match_min():
+    assert verify_answer("Dwell 10 minutes [1].", ["Dwell time is 10 min."]).ok
+
+
+def test_a_figure_from_an_uncited_block_is_located():
+    answer = "Between .045 and .062 inch, spacing less than 2 inches: .020-inch [1]."
+    result = verify_answer(answer, [PAGE_7_19, PAGE_7_20])
+    assert result.unsupported == [".062 inch", "2 inches"]
+    assert result.found_in_uncited == {".062 inch": [2], "2 inches": [2]}
+    assert not result.ok  # the cited block still does not back them
+
+
+def test_an_invented_figure_is_not_located_anywhere():
+    result = verify_answer("Use .071-inch wire [1].", [PAGE_7_19, PAGE_7_20])
+    assert result.unsupported == [".071-inch"]
+    assert result.found_in_uncited == {}
+
+
+def test_without_citations_nothing_is_uncited():
+    result = verify_answer("Use .071-inch wire.", [PAGE_7_19, PAGE_7_20])
+    assert result.found_in_uncited == {}

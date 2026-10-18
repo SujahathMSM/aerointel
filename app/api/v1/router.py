@@ -83,6 +83,7 @@ def _verification_out(
         unsupported=v.unsupported,
         unit_mismatch=v.unit_mismatch,
         bad_citations=v.bad_citations,
+        found_in_uncited=v.found_in_uncited,
         blocked=blocked,
     )
 
@@ -129,6 +130,7 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
             verification=_verification_out(result.verification, blocked=True)
             if result.verification
             else None,
+            answer_check=result.answer_check,
         )
 
     logger.info(
@@ -145,6 +147,7 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
         prompt_version=result.prompt_version,
         unknown_terms=result.unknown_terms,
         verification=_verification_out(result.verification),
+        answer_check=result.answer_check,
     )
 
 
@@ -161,8 +164,8 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
     HTTP error. After that the stream is:
 
     - `meta`  -- question, refused, refusal_reason, refusal_message,
-                 unknown_terms, chunks (the sources), prompt_version.
-                 Always first.
+                 unknown_terms, answer_check, chunks (the sources),
+                 prompt_version. Always first.
     - `token` -- `{"text": "..."}`, repeated; concatenate to build the answer.
     - `verification` -- only when the answer contained figures or citations to
                  check: the same object as `/v1/query`'s `verification`. The text
@@ -172,9 +175,10 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
     - `error` -- `{"detail": "..."}` if generation fails after the stream began
                  (the status line was already sent); no `done` follows.
 
-    A refusal is `meta` (refused=true) then `done`: the model is never called.
-    (The exception is a figure-check withhold, which is decided after generation
-    and so cannot happen on the stream: see `verification`.)
+    A refusal is `meta` (refused=true) then `done`: the model is never asked to
+    answer. (With ANSWER_CHECK=refuse it may have been asked the yes/no check,
+    which is what refused it. A figure-check withhold is decided after
+    generation and so cannot happen on the stream: see `verification`.)
     """
     settings = get_settings()
     prepared = await prepare_answer(session, ollama, body.question, body.top_k)
@@ -191,6 +195,7 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
         unknown_terms=prepared.unknown_terms,
         chunks=[_to_retrieved(c, d) for c, d in prepared.chunks],
         prompt_version=prepared.prompt_version,
+        answer_check=prepared.answer_check,
     ).model_dump(exclude={"answer", "verification"})
 
     async def events() -> AsyncIterator[str]:

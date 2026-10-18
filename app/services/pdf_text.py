@@ -149,6 +149,59 @@ def _alnum_count(text: str) -> int:
     return sum(ch.isalnum() for ch in text)
 
 
+# ---------------------------------------------------------------- split words
+
+# Some text layers put a space inside a word: "C onduits wi ll", "Kink ing",
+# "CA UTION". Embeddings shrug it off; keyword search does not ("conduits"
+# matches nothing). A pair of neighbouring pieces is joined when the joined word
+# occurs elsewhere in the same document and at least one piece is rare there on
+# its own -- so "a round hole" stays two words ("round" is common) while
+# "a ircraft" becomes "aircraft".
+MAX_PIECE_COUNT = 2  # a piece seen at most this often counts as rare
+MIN_JOINED_COUNT = 2  # the joined word must occur at least this often
+_LEFT = re.compile(r"^(\W*)([A-Za-z]+)$")  # "(T" -> "(", "T"
+_RIGHT = re.compile(r"^([A-Za-z]+)(\W*)$")  # "ll." -> "ll", "."
+
+
+def word_counts(texts: list[str]) -> Counter[str]:
+    """How often each word (letters only, lower case) occurs in the document."""
+    counts: Counter[str] = Counter()
+    for text in texts:
+        counts.update(word.lower() for word in re.findall(r"[A-Za-z]+", text))
+    return counts
+
+
+def _should_join(left: str, right: str, counts: Counter[str]) -> bool:
+    if left[-1].islower() and right[0].isupper():
+        return False  # "per Mil": a lower-case word then a capital is two words
+    if counts[(left + right).lower()] < MIN_JOINED_COUNT:
+        return False
+    return min(counts[left.lower()], counts[right.lower()]) <= MAX_PIECE_COUNT
+
+
+def repair_split_words(text: str, counts: Counter[str]) -> str:
+    """Join word pieces the text layer split apart, judged by `counts`.
+
+    `counts` comes from the whole document (`word_counts`), so a word is
+    recognised because the document spells it whole elsewhere -- no
+    dictionary, no language assumptions. Only pieces separated by a single
+    space with no punctuation between them are candidates.
+    """
+    tokens = text.split(" ")
+    out: list[str] = []
+    i = 0
+    while i < len(tokens):
+        if i + 1 < len(tokens):
+            left, right = _LEFT.match(tokens[i]), _RIGHT.match(tokens[i + 1])
+            if left and right and _should_join(left[2], right[1], counts):
+                out.append(left[1] + left[2] + right[1] + right[2])
+                i += 2
+                continue
+        out.append(tokens[i])
+        i += 1
+    return " ".join(out)
+
+
 # ----------------------------------------------------------------- extraction
 
 
@@ -156,8 +209,13 @@ def extract_pages(
     data: bytes,
     ocr: OcrFn | None = None,
     ocr_language: str = "eng",
+    repair_words: bool = False,
 ) -> list[PageText]:
-    """Read every page's text, clean it, and OCR pages that have none."""
+    """Read every page's text, clean it, and OCR pages that have none.
+
+    `repair_words`: join words the text layer split apart ("C onduits"),
+    judged against the document's own vocabulary (see `repair_split_words`).
+    """
     try:
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
@@ -198,6 +256,18 @@ def extract_pages(
             text = join_lines(ocr_text[number].splitlines())
             used_ocr = True
         pages.append(PageText(number=number, label=labels[i], text=text, ocr=used_ocr))
+
+    if repair_words:
+        counts = word_counts([page.text for page in pages])
+        pages = [
+            PageText(
+                number=page.number,
+                label=page.label,
+                text=repair_split_words(page.text, counts),
+                ocr=page.ocr,
+            )
+            for page in pages
+        ]
 
     if not any(_alnum_count(p.text) >= MIN_PAGE_ALNUM for p in pages):
         raise PdfNoTextError(

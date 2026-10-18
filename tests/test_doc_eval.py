@@ -323,3 +323,86 @@ def test_show_marks_the_right_page_and_says_where_each_fact_is():
     assert text.count("<- right page") == 1
     assert "fact 'blue oxide coating': NOT in any shown chunk" in text
     assert "fact 'clean with magnesium': in result 1" in text
+
+
+# ------------------------------------------- served retrieval and reading limit
+
+
+def test_the_gate_is_judged_on_the_closest_served_chunk_not_the_first():
+    # hybrid order: the keyword-ranked first result is further than the third
+    served = results((1, 0.55), (2, 0.60), (3, 0.47))
+    off = score_off_topic(served, 0.48)
+    assert off["top_distance"] == 0.55
+    assert off["gate_distance"] == 0.47
+    assert off["refused"] is False  # the API would answer it
+
+
+def test_a_right_page_past_the_gate_reaches_the_model_only_with_a_reading_limit():
+    # the weld question as served live: passes on page 463, answer on 464 at 0.495
+    served = results((463, 0.422), (464, 0.495))
+    plain = score_item(served, SOURCE, [464], 0.48, served=served)
+    widened = score_item(
+        served, SOURCE, [464], 0.48, served=served, context_max_distance=0.52
+    )
+    assert plain["gate_distance"] == 0.422
+    assert plain["served_hit_distance"] == 0.495
+    assert plain["reaches_prompt"] is False
+    assert widened["reaches_prompt"] is True
+
+
+def test_a_reading_limit_does_not_help_a_question_the_gate_refuses():
+    served = results((464, 0.495))
+    row = score_item(
+        served, SOURCE, [464], 0.48, served=served, context_max_distance=0.60
+    )
+    assert row["reaches_prompt"] is False
+
+
+def test_rank_comes_from_the_deep_ranking_and_reach_from_what_is_served():
+    deep = results(
+        (10, 0.30), (11, 0.31), (12, 0.32), (13, 0.33), (14, 0.34), (5, 0.35)
+    )
+    served = deep[:5]  # the right page is 6th: never served
+    row = score_item(deep, SOURCE, [5], 0.48, served=served)
+    assert row["rank"] == 6
+    assert row["best_hit_distance"] == 0.35
+    assert row["served_hit_distance"] is None
+    assert row["reaches_prompt"] is False
+
+
+def test_sweep_with_a_reading_limit():
+    rows = [
+        {"gate_distance": 0.42, "served_hit_distance": 0.495},  # weld
+        {"gate_distance": 0.40, "served_hit_distance": 0.40},
+    ]
+    off = [{"gate_distance": 0.465}]
+    at = {s["max_distance"]: s for s in threshold_sweep(rows, off)}
+    widened = {
+        s["max_distance"]: s
+        for s in threshold_sweep(rows, off, context_max_distance=0.52)
+    }
+    assert at[0.44]["reaches_prompt"] == 0.5  # weld's answer is never read
+    assert widened[0.44]["reaches_prompt"] == 1.0  # read past the gate
+    assert widened[0.44]["off_topic_refused"] == 1.0  # the gate is unchanged
+    assert widened[0.40]["reaches_prompt"] == 0.5  # weld fails the gate at 0.40
+
+
+def test_sweep_still_reads_result_files_saved_before_this_change():
+    old_rows = [{"best_hit_distance": 0.30, "top_distance": 0.30}]
+    old_off = [{"top_distance": 0.70}]
+    at = {s["max_distance"]: s for s in threshold_sweep(old_rows, old_off)}
+    assert at[0.30]["reaches_prompt"] == 1.0
+    assert at[0.30]["off_topic_refused"] == 1.0
+
+
+def test_show_marks_what_the_model_reads():
+    served = [
+        (ShownChunk(1, 463, "Remove all flux after welding."), 0.422),
+        (ShownChunk(2, 464, "Tanks must not be welded unless purged."), 0.495),
+    ]
+    text = describe_retrieval(
+        "weld", "q?", served, SOURCE, [464], None, read=served[:1]
+    )
+    lines = [line for line in text.splitlines() if line.startswith("  #")]
+    assert lines[0].endswith("[read]")
+    assert lines[1].endswith("<- right page  [not read]")
