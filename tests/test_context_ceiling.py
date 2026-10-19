@@ -308,3 +308,38 @@ async def test_stream_meta_carries_the_check_and_never_streams_a_refusal(
     assert meta["answer_check"] == "no"
     assert meta["refusal_reason"] == "not_in_context"
     assert calls == []
+
+
+# ------------------------------------------------- answer-check prompt version
+
+
+def test_the_check_prompt_is_pinned_to_the_measured_version():
+    # v2: 24/24 YES on right questions and 13/13 NO on gate misses, 3 runs
+    # (evals/results/check_v2*.json); v1 said NO to fabric-punch-tester.
+    assert Settings().answer_check_version == "v2"
+    assert generation.answer_check_system().version == "v2"
+
+
+def test_a_blank_version_means_the_newest_prompt(monkeypatch):
+    monkeypatch.setenv("ANSWER_CHECK_VERSION", "")
+    from app.prompts import latest_version
+
+    values = Settings()
+    assert values.answer_check_version is None
+    monkeypatch.setattr(generation, "get_settings", lambda: values)
+    assert generation.answer_check_system().version == latest_version("answer_check")
+
+
+async def test_an_explicit_version_reaches_the_model(monkeypatch):
+    seen = []
+
+    class Recorder:
+        async def chat(self, system, prompt):
+            seen.append(system)
+            return "YES"
+
+    v2 = generation.get_prompt("answer_check", "v2")
+    verdict = await generation.check_answerable(Recorder(), "q", WELD[:1], "v2")
+    assert verdict == CHECK_YES
+    assert seen == [v2.text]
+    assert "how reliable" in v2.text  # judgement questions are answerable

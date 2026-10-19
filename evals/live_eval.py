@@ -16,6 +16,7 @@ can only be measured with it:
     python -m evals.live_eval --retriever hybrid --context-max-distance 0.52
     python -m evals.live_eval --only weld-metal-fuel-tank --only b737-jacking
     python -m evals.live_eval --check-only            # skip writing answers (faster)
+    python -m evals.live_eval --check-only --check-version v2   # try a new check prompt
     python -m evals.live_eval --save evals/results/live.json
 
 It uses the same retrieval, gate, reading limit, prompts and checks as the API,
@@ -37,6 +38,7 @@ from app.db.base import SessionFactory
 from app.llm.ollama import OllamaClient
 from app.services.generation import (
     CHECK_NO,
+    answer_check_system,
     build_prompt,
     check_answerable,
     context_block,
@@ -175,6 +177,7 @@ async def run(
     check_only: bool,
     only: set[str] | None,
     save: Path | None,
+    check_version: str | None = None,
 ) -> int:
     golden = load_golden()
     source = golden["source"]
@@ -218,7 +221,9 @@ async def run(
         }
         if not context:
             return row
-        row["check"] = await check_answerable(ollama, item["question"], context)
+        row["check"] = await check_answerable(
+            ollama, item["question"], context, check_version
+        )
         if check_only:
             return row
         answer = await ollama.chat(system.text, build_prompt(item["question"], context))
@@ -252,6 +257,7 @@ async def run(
         f"retriever={retriever}  max_distance={settings.max_distance}  "
         f"context_max_distance={context_max_distance}  top_k={settings.top_k}  "
         f"model={settings.llm_model}  prompt={system.label}  "
+        f"check={answer_check_system(check_version).label}  "
         f"{time.monotonic() - started:.0f}s"
     )
     print()
@@ -300,6 +306,11 @@ if __name__ == "__main__":
         "--only", action="append", metavar="ID", help="run only this question id"
     )
     parser.add_argument("--save", type=Path, help="write all rows and answers here")
+    parser.add_argument(
+        "--check-version",
+        metavar="vN",
+        help="answer-check prompt version (default: ANSWER_CHECK_VERSION)",
+    )
     args = parser.parse_args()
     sys.exit(
         asyncio.run(
@@ -309,6 +320,7 @@ if __name__ == "__main__":
                 args.check_only,
                 set(args.only) if args.only else None,
                 args.save,
+                args.check_version,
             )
         )
     )

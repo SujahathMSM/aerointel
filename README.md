@@ -484,6 +484,27 @@ let through (catches), whether the written answers to off-topic questions declin
 (prompt rule 2), and which right answers the figure check flags (each one a
 candidate false alarm; the answers are saved with `--save` so they can be read).
 
+Measured 2026-10-18 (qwen3:4b-instruct, hybrid, `CONTEXT_MAX_DISTANCE=0.52`; 24 right
+questions, 28 that must not be answered: 3 generic, 6 outside the manual, 19
+*near-topic*, which the manual covers in its own words without giving the figure
+asked for):
+
+| | right questions: check says YES | gate misses (13): check says NO | written answers that decline |
+|---|---|---|---|
+| check prompt v1 | 23 of 24 (NO to "how reliable is a punch tester") | 13 of 13 | 13 of 13 |
+| check prompt v2 | 24 of 24, three runs | 13 of 13, three runs | - |
+
+12 of the 19 near-topic questions pass the distance gate (closest chunk 0.334-0.472,
+closer than many right answers), so no `MAX_DISTANCE` separates them; prompt rule 2
+already declined all of them without inventing a figure. v2 tells a request for a
+*value* (YES only if the passages give it, not "use the recommended value") from a
+request for an *explanation or judgement*. `ANSWER_CHECK_VERSION` pins the prompt
+(default `v2`) so a new prompt file cannot change refusals before it is measured:
+`python -m evals.live_eval --check-only --check-version vN`. With `ANSWER_CHECK=refuse`
+the refusal no longer depends on the model obeying rule 2. v2 was written after
+seeing the v1 miss, so its 24 of 24 is partly by construction; questions written by
+someone else are the real test.
+
 To see why a question retrieves what it does:
 
 ```powershell

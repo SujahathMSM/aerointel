@@ -189,6 +189,13 @@ def answer_check_prompt(question: str, chunks: list[tuple]) -> str:
     return build_prompt(question, chunks).removesuffix("ANSWER:") + "REPLY (YES or NO):"
 
 
+def answer_check_system(version: str | None = None):
+    """The answer-check prompt: `version`, else ANSWER_CHECK_VERSION, else newest."""
+    return get_prompt(
+        ANSWER_CHECK_PROMPT, version or get_settings().answer_check_version
+    )
+
+
 def parse_answer_check(reply: str) -> str:
     """YES / NO from the first word of the reply; anything else is unclear."""
     words = reply.strip().split()
@@ -201,7 +208,10 @@ def parse_answer_check(reply: str) -> str:
 
 
 async def check_answerable(
-    ollama: OllamaClient, question: str, chunks: list[tuple]
+    ollama: OllamaClient,
+    question: str,
+    chunks: list[tuple],
+    version: str | None = None,
 ) -> str:
     """Ask the model whether the context answers the question (one short call).
 
@@ -210,7 +220,7 @@ async def check_answerable(
     the torque table as a real torque question does. Reading the passages is
     the only way to tell, so the model is asked before it writes an answer.
     """
-    prompt = get_prompt(ANSWER_CHECK_PROMPT)
+    prompt = answer_check_system(version)
     reply = await ollama.chat(prompt.text, answer_check_prompt(question, chunks))
     return parse_answer_check(reply)
 

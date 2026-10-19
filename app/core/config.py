@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     # extra model call per answered question. Measure with
     # `python -m evals.live_eval` before choosing "refuse".
     answer_check: Literal["off", "flag", "refuse"] = "off"
+    # Version of the answer-check prompt ("v1", "v2"; None = newest file). Pin
+    # the measured one: a new prompt file must not change refusals unmeasured.
+    answer_check_version: str | None = "v2"
 
     # Verification of the answer's numbers against the passages it cites.
     # "flag" = report numbers/units the cited passages do not contain;
@@ -164,7 +167,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    @field_validator("context_max_distance", "llm_num_ctx", mode="before")
+    @field_validator(
+        "context_max_distance", "llm_num_ctx", "answer_check_version", mode="before"
+    )
     @classmethod
     def _blank_means_unset(cls, value):
         """`CONTEXT_MAX_DISTANCE=` (empty) in .env means "not set", not an error."""
