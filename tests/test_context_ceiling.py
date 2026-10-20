@@ -343,3 +343,14 @@ async def test_an_explicit_version_reaches_the_model(monkeypatch):
     assert verdict == CHECK_YES
     assert seen == [v2.text]
     assert "how reliable" in v2.text  # judgement questions are answerable
+
+
+def test_the_answer_prompt_is_pinned_until_a_new_one_is_measured():
+    # grounded_answer.v2 (partial answers, no substituted values) exists but the
+    # API keeps v1 until live_eval says otherwise (PROMPT_VERSION=v2 to try it).
+    assert Settings().prompt_version == "v1"
+    assert generation.system_prompt().version == "v1"
+    v2 = generation.get_prompt("grounded_answer", "v2")
+    assert "answer that part" in v2.text
+    v3 = generation.get_prompt("answer_check", "v3")
+    assert "at least one of them" in v3.text

@@ -94,8 +94,9 @@ class Settings(BaseSettings):
 
     # Prompt registry (Phase 1): prompts live as versioned files under
     # app/prompts/. None = use the newest version on disk; pin a version
-    # ("v1") to freeze behavior while a newer one is being evaluated.
-    prompt_version: str | None = None
+    # ("v1") to freeze behavior while a newer one is being evaluated. Pinned
+    # to the measured version so a new file cannot change answers unmeasured.
+    prompt_version: str | None = "v1"
 
     # Rate limiting (Phase 2): token bucket per client, stored in Redis so
     # every worker/replica shares one budget. Defaults: bursts of up to 20
@@ -168,7 +169,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator(
-        "context_max_distance", "llm_num_ctx", "answer_check_version", mode="before"
+        "context_max_distance",
+        "llm_num_ctx",
+        "answer_check_version",
+        "prompt_version",
+        mode="before",
     )
     @classmethod
     def _blank_means_unset(cls, value):

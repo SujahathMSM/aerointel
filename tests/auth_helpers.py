@@ -45,6 +45,7 @@ os.environ["CHUNK_BY_PARAGRAPH"] = "false"
 os.environ["CONTEXT_MAX_DISTANCE"] = ""
 os.environ["ANSWER_CHECK"] = "off"
 os.environ["ANSWER_CHECK_VERSION"] = "v2"
+os.environ["PROMPT_VERSION"] = "v1"
 os.environ["PDF_REPAIR_SPLIT_WORDS"] = "false"
 
 from app.core.auth import create_access_token

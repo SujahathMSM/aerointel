@@ -1,0 +1,4 @@
+# Diagrams are generated documentation, not source: keep them out of the
+# GitHub language bar (they are ~1.4 MB of HTML next to ~0.5 MB of Python).
+diagrams/** linguist-documentation
+evals/results/** linguist-generated
