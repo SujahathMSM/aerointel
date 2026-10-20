@@ -1,7 +1,7 @@
 """Answers and answer checks from an Anthropic model; embeddings stay local.
 
 Only `chat()` goes to the API. Retrieval (EmbeddingGemma via Ollama, pgvector,
-BM25) is unchanged, so a comparison with the local model changes exactly one
+keyword search) is unchanged, so a comparison with the local model changes exactly one
 thing: the model that reads the passages. Selected with LLM_PROVIDER=anthropic.
 
 This is a first slice of M2 for evaluation. Passages are sent to the API, so

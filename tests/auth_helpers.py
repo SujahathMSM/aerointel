@@ -46,6 +46,7 @@ os.environ["CONTEXT_MAX_DISTANCE"] = ""
 os.environ["ANSWER_CHECK"] = "off"
 os.environ["ANSWER_CHECK_VERSION"] = "v2"
 os.environ["PROMPT_VERSION"] = "v1"
+os.environ["KEYWORD_QUERY"] = "any"
 # Never call a paid API from the test suite, whatever the developer's .env says.
 os.environ["LLM_PROVIDER"] = "ollama"
 os.environ["ANTHROPIC_API_KEY"] = ""

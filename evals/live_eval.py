@@ -256,6 +256,7 @@ async def run(
     label = (
         f"retriever={retriever}  max_distance={settings.max_distance}  "
         f"context_max_distance={context_max_distance}  top_k={settings.top_k}  "
+        f"keyword_query={settings.keyword_query}  "
         f"model={ollama.model_name}  prompt={system.label}  "
         f"check={answer_check_system(check_version).label}  "
         f"{time.monotonic() - started:.0f}s"
@@ -290,7 +291,13 @@ class _Text:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Live eval of the trust layer.")
-    parser.add_argument("--retriever", choices=["vector", "hybrid"], default="vector")
+    parser.add_argument(
+        "--retriever",
+        choices=["vector", "hybrid"],
+        # Follow the API (HYBRID_ENABLED) unless told otherwise: a default of
+        # "vector" silently measured a retriever the API does not serve.
+        default="hybrid" if get_settings().hybrid_enabled else "vector",
+    )
     parser.add_argument(
         "--context-max-distance",
         type=float,

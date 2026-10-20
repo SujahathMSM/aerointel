@@ -4,7 +4,7 @@ This is the Phase 1 scoreboard. Run it before and after any retrieval
 change and compare the numbers:
 
     python -m evals.run_eval                                  # baseline
-    python -m evals.run_eval --retriever hybrid               # + BM25/RRF
+    python -m evals.run_eval --retriever hybrid               # + keyword search/RRF
     python -m evals.run_eval --reranker crossencoder          # + rerank
     python -m evals.run_eval --retriever hybrid --reranker crossencoder
     python -m evals.run_eval --faithfulness                   # + hallucination check

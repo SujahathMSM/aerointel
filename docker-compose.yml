@@ -56,6 +56,7 @@ services:
       PDF_REPAIR_SPLIT_WORDS: ${PDF_REPAIR_SPLIT_WORDS:-false}
       # Retrieval switches. Measure a change with python -m evals.doc_eval first.
       HYBRID_ENABLED: ${HYBRID_ENABLED:-false}
+      KEYWORD_QUERY: ${KEYWORD_QUERY:-any}
       MAX_DISTANCE: ${MAX_DISTANCE:-0.48}
       # Once a question passes MAX_DISTANCE, read chunks up to this far (blank = same).
       CONTEXT_MAX_DISTANCE: ${CONTEXT_MAX_DISTANCE:-}

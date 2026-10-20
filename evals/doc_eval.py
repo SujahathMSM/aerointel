@@ -51,6 +51,7 @@ from app.llm.ollama import OllamaClient
 from app.services.answerability import question_terms, term_chunk_counts
 from app.services.context import expand_with_neighbours
 from app.services.generation import CHARS_PER_TOKEN, context_ceiling, select_context
+from app.services.hybrid import keyword_search
 from app.services.pipeline import retrieve
 from app.services.reranking import build_reranker
 from evals.metrics import hit_recall_at_k, hit_reciprocal_rank
@@ -384,6 +385,11 @@ def summarise(rows: list[dict], off_topic: list[dict]) -> dict:
         summary["all_facts"] = sum(
             r["facts_found"] == r["facts_total"] for r in scored
         ) / len(scored)
+    if rows and "keyword_hits" in rows[0]:
+        # How often the keyword half of hybrid search contributes anything.
+        summary["keyword_k"] = rows[0]["keyword_k"]
+        summary["keyword_empty"] = sum(r["keyword_hits"] == 0 for r in rows)
+        summary["keyword_finds_answer"] = sum(r["keyword_finds_answer"] for r in rows)
     if off_topic:
         summary["off_topic_refused"] = sum(r["refused"] for r in off_topic) / len(
             off_topic
@@ -528,6 +534,13 @@ def print_report(
             f"coverage={summary['fact_coverage']:.3f}  "
             f"questions with every fact={summary['all_facts']:.3f}"
         )
+    if "keyword_empty" in summary:
+        print(
+            f"keyword search alone (top {summary['keyword_k']}): matched nothing for "
+            f"{summary['keyword_empty']} of {summary['questions']} questions "
+            f"(hybrid is vector-only for those); found an answer page for "
+            f"{summary['keyword_finds_answer']}"
+        )
     if "context_hit" in summary:
         print(
             f"context_hit={summary['context_hit']:.3f}  "
@@ -611,6 +624,7 @@ async def run(
     min_recall5: float | None,
     show: set[str] | None = None,
     context_max_distance: float | None = None,
+    keyword_query: str | None = None,
 ) -> int:
     golden = load_golden()
     source = golden["source"]
@@ -642,6 +656,7 @@ async def run(
                     k,
                     hybrid=(retriever == "hybrid"),
                     reranker=active_reranker,
+                    keyword_query=keyword_query,
                 )
 
             for item in golden["items"]:
@@ -670,6 +685,16 @@ async def run(
                 )
                 row["term_counts"] = await term_chunk_counts(
                     session, question_terms(item["question"])
+                )
+                # What the keyword half alone finds, whatever the retriever.
+                # Same depth as the served hybrid search fetches per list.
+                kw = await keyword_search(
+                    session, item["question"], settings.top_k, keyword_query
+                )
+                row["keyword_k"] = settings.top_k
+                row["keyword_hits"] = len(kw)
+                row["keyword_finds_answer"] = any(
+                    is_hit(chunk, source, item["pages"]) for chunk, _ in kw
                 )
                 per_item.append({"id": item["id"], "question": item["question"], **row})
                 if show and ("all" in show or item["id"] in show):
@@ -730,7 +755,8 @@ async def run(
     label = (
         f"retriever={retriever}  reranker={reranker}  neighbors={neighbors}  "
         f"max_distance={settings.max_distance}  "
-        f"context_max_distance={context_max_distance}  top_k={settings.top_k}"
+        f"context_max_distance={context_max_distance}  top_k={settings.top_k}  "
+        f"keyword_query={keyword_query or settings.keyword_query}"
     )
     print_report(per_item, off_topic, summary, label)
     print_threshold(sweep, settings.max_distance)
@@ -782,7 +808,13 @@ async def run(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Retrieval eval on real documents.")
-    parser.add_argument("--retriever", choices=["vector", "hybrid"], default="vector")
+    parser.add_argument(
+        "--retriever",
+        choices=["vector", "hybrid"],
+        # Follow the API (HYBRID_ENABLED) unless told otherwise: a default of
+        # "vector" silently measured a retriever the API does not serve.
+        default="hybrid" if get_settings().hybrid_enabled else "vector",
+    )
     parser.add_argument("--reranker", choices=["none", "crossencoder"], default="none")
     parser.add_argument(
         "--neighbors",
@@ -813,6 +845,13 @@ if __name__ == "__main__":
         "passed MAX_DISTANCE (default: CONTEXT_MAX_DISTANCE; unset = the gate)",
     )
     parser.add_argument(
+        "--keyword-query",
+        choices=["all", "any"],
+        default=None,
+        help="keyword half of hybrid search: 'all' = every word must match (AND), "
+        "'any' = any distinctive word (OR) (default: KEYWORD_QUERY)",
+    )
+    parser.add_argument(
         "--min-recall5",
         type=float,
         help="exit 1 if mean recall@5 is below this (for use as a gate)",
@@ -829,6 +868,7 @@ if __name__ == "__main__":
                 args.min_recall5,
                 set(args.show) if args.show else None,
                 args.context_max_distance,
+                args.keyword_query,
             )
         )
     )

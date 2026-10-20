@@ -76,7 +76,7 @@ embed question (EmbeddingGemma via Ollama)
 exactly what's served. It composes, all independently feature-flagged and off by
 default:
 - `app/services/retrieval.py` — plain pgvector cosine search
-- `app/services/hybrid.py` — BM25 + pgvector merged via Reciprocal Rank Fusion (`HYBRID_ENABLED`)
+- `app/services/hybrid.py` — Postgres full-text keyword search (`ts_rank`, not true BM25) + pgvector merged via Reciprocal Rank Fusion (`HYBRID_ENABLED`; `KEYWORD_QUERY=any` ORs the question's distinctive words, `all` ANDs them)
 - `app/services/reranking.py` — cross-encoder rescoring of top candidates (`RERANKER=crossencoder`, needs `requirements-rerank.txt`)
 
 Layering: `api/v1/router.py` (HTTP) -> `services/*.py` (RAG logic, no HTTP

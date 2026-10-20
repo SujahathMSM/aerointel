@@ -117,6 +117,35 @@ async def test_keyword_search_finds_exact_terms(db_session):
         await _cleanup(db_session)
 
 
+async def test_any_mode_matches_a_chunk_missing_some_question_words(db_session):
+    # A natural question names more words than any one chunk holds. "all" (AND)
+    # then finds nothing; "any" (OR) finds the chunk and ranks the one covering
+    # more of the question first.
+    full = DocumentChunk(
+        content="Flumox plug torque is checked with a calibrated wrench.",
+        metadata_={"source": MARKER},
+        embedding=None,
+    )
+    partial = DocumentChunk(
+        content="A flumox plug is fitted after cleaning.",
+        metadata_={"source": MARKER},
+        embedding=None,
+    )
+    db_session.add_all([full, partial])
+    await db_session.commit()
+
+    def _ours(results):
+        return [c.id for c, _ in results if c.metadata_.get("source") == MARKER]
+
+    question = "What torque does the flumox plug need on a turboprop gearbox?"
+    try:
+        assert _ours(await keyword_search(db_session, question, 10, "all")) == []
+        found = _ours(await keyword_search(db_session, question, 10, "any"))
+        assert found[:2] == [full.id, partial.id]
+    finally:
+        await _cleanup(db_session)
+
+
 async def test_hybrid_search_fuses_and_backfills_distances(db_session):
     # Two chunks: one matches by meaning (synthetic vector), one by exact
     # keyword. Hybrid must surface both, with distances for each.

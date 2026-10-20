@@ -24,12 +24,15 @@ async def retrieve(
     *,
     hybrid: bool | None = None,
     reranker: Reranker | None = None,
+    keyword_query: str | None = None,
 ) -> list[tuple]:
     """Return (chunk, distance) pairs, best first.
 
     hybrid:   None -> use settings.hybrid_enabled; explicit True/False
               overrides (the eval harness A/B tests this way).
     reranker: None -> use the configured reranker from settings.
+    keyword_query: "all" / "any" for the keyword half of hybrid search;
+              None -> settings.keyword_query.
     """
     settings = get_settings()
     top_k = top_k or settings.top_k
@@ -43,7 +46,9 @@ async def retrieve(
     candidate_k = max(top_k, settings.rerank_candidates) if reranking_active else top_k
 
     if use_hybrid:
-        candidates = await hybrid_search(session, ollama, query, candidate_k)
+        candidates = await hybrid_search(
+            session, ollama, query, candidate_k, keyword_query
+        )
     else:
         candidates = await search_chunks(session, ollama, query, candidate_k)
     if not reranking_active:

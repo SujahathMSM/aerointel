@@ -22,8 +22,8 @@ but not the figure asked for). Last measured 2026-10-20.
 
 | What | Result |
 |---|---|
-| Right page in the top 5 (hybrid search, 35 questions) | **0.943** recall@5 · MRR 0.867 (original 24: 1.000 · 0.951) |
-| Answer passage reaches the model (original 24, reading limit 0.52) | **24 of 24** |
+| Right page in the top 5 (hybrid search, 35 questions) | **1.000** recall@5 · MRR 0.859 (0.943 · 0.867 before the [keyword fix](#keyword-search-all-words-versus-any-word)) |
+| Answer passage reaches the model (reading limit 0.52) | **34 of 35** (all 24 original) |
 | Refused before any model call (distance gate) | 15 of 32 must-not-answer questions |
 | Caught after the gate (answer check), Claude Haiku 5.5 | **17 of 17** — and its answers declined all 17 |
 | Caught after the gate, local Qwen3 4B | 16 of 17 |
@@ -43,7 +43,7 @@ are caught by reading the passages, not by distance. See
 | Stage 1D — semantic ranking | Cosine search ranks by actual meaning, not luck (6/6 checks) | ✅ verified |
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
-| Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
+| Phase 1 — hybrid retrieval + eval | Postgres full-text keyword search + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
 | Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback, paragraph-aware chunking) · page-scored eval on a 35-question FAA golden set ✅ · reading limit past the gate ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
@@ -75,7 +75,7 @@ finder that shows its sources, not an airworthiness authority.
 ```mermaid
 flowchart TD
     Q["POST /v1/query<br/>question"] --> E["Embed the question<br/>EmbeddingGemma, local"]
-    E --> H["Hybrid search<br/>pgvector + BM25 keywords, fused by RRF, top 5"]
+    E --> H["Hybrid search<br/>pgvector + keyword search, fused by RRF, top 5"]
     H --> G{"Closest chunk within<br/>MAX_DISTANCE 0.48?"}
     G -- no --> R1["Refuse: too_far<br/>the model is never called"]
     G -- yes --> C["Reading limit<br/>the model reads every chunk within 0.52"]
@@ -609,7 +609,8 @@ system behaves exactly as it did in Phase 0 until you turn them on.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `HYBRID_ENABLED` | `false` | Runs BM25 keyword search alongside vector search and merges the two rankings with Reciprocal Rank Fusion. Catches exact terms (part numbers, `2.5 bar`) that embeddings generalise away. |
+| `HYBRID_ENABLED` | `false` | Runs Postgres full-text keyword search (`ts_rank`; not true BM25: no weighting of rare words) alongside vector search and merges the two rankings with Reciprocal Rank Fusion. Catches exact terms (part numbers, `2.5 bar`) that embeddings generalise away. |
+| `KEYWORD_QUERY` | `any` | How the keyword half reads the question: `any` = a chunk matching any distinctive question word (OR), ranked by how many it matches; `all` = every word must match (AND), which matched nothing for 27 of 35 questions. |
 | `RERANKER` | `none` | `crossencoder` re-scores the top `RERANK_CANDIDATES` with a model that reads query and chunk together. Needs `pip install -r requirements-rerank.txt`. |
 | `PROMPT_VERSION` | unset | Pins a prompt version (e.g. `v1`); unset uses the newest file in `app/prompts/`. |
 
@@ -643,7 +644,7 @@ only after a clean run.
 
 ```powershell
 python -m evals.run_eval                                   # vector baseline
-python -m evals.run_eval --retriever hybrid                # + BM25/RRF
+python -m evals.run_eval --retriever hybrid                # + keyword search/RRF
 python -m evals.run_eval --retriever hybrid --reranker crossencoder
 python -m evals.run_eval --faithfulness                    # + hallucination check
 ```
@@ -716,7 +717,7 @@ means. The eval exits 1 if mean recall@5 drops below 0.9.
 recall@1=0.667  recall@3=1.000  recall@5=1.000  MRR=0.833
 ```
 
-**Hybrid (BM25 + pgvector + RRF, `--retriever hybrid`):**
+**Hybrid (keyword search + pgvector + RRF, `--retriever hybrid`):**
 
 ```text
 recall@1=0.667  recall@3=1.000  recall@5=1.000  MRR=0.833
@@ -803,6 +804,37 @@ What it showed:
 
 `HYBRID_ENABLED` and `MAX_DISTANCE` are passed through `docker-compose.yml`, so
 set them in `.env` and run `docker compose up -d`.
+
+### Keyword search: all words versus any word
+
+The keyword half of hybrid search used `websearch_to_tsquery`, which joins the
+question's words with AND: a chunk is found only if it contains *every* word. A
+natural question rarely fits in one chunk, so for most questions the keyword list
+was empty and "hybrid" was really vector search. `KEYWORD_QUERY=any` ORs the
+question's distinctive words instead (the same words the unknown-word check uses)
+and lets `ts_rank` prefer chunks that match more of them. Measured 2026-10-20 on
+all 67 questions, hybrid, `top_k` 5:
+
+| | `all` (AND) | `any` (OR) |
+|---|---|---|
+| Keyword search matched nothing | **27 of 35** questions | **0 of 35** |
+| Keyword search found an answer page | 8 | 32 |
+| recall@1 / recall@5 / MRR | 0.800 / 0.943 / 0.867 | 0.771 / **1.000** / 0.859 |
+| Answer page reaches the model | 33 of 35 | **34 of 35** |
+| Every fact in the passages read | 27 of 35 | 27 of 35 |
+| Gate: off-topic / near-topic refused | 8 of 9 / 7 of 23 | same |
+| Live (Qwen): wrong answers caught after the gate | 16 of 17 | 16 of 17 |
+| Live: figures flagged | 1 | 0 |
+
+The NDI and wood questions now reach their answer pages (ranks 9 and 7 before);
+manufacturer-first drops out of the served top 5. Written answers are about level:
+the bolts question is now answered, the transparent-plastics one is now declined, and
+NDI and wood are still declined because the passages hold part of what they ask.
+`any` is the default: same safety, retrieval that actually uses both halves. The
+keyword ranking is still `ts_rank`, not BM25 (no weighting of rare words); real BM25
+would need an extension such as ParadeDB `pg_search`. Files:
+`evals/results/kw_all.json`, `kw_any.json`, `live_kw_any.json` (baseline
+`user_questions_live.json`).
 
 ### Answer models compared
 

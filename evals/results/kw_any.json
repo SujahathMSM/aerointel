@@ -1,0 +1,1836 @@
+{
+  "label": "retriever=hybrid  reranker=none  neighbors=0  max_distance=0.48  context_max_distance=0.52  top_k=5  keyword_query=any",
+  "summary": {
+    "questions": 35,
+    "recall@1": 0.7714285714285715,
+    "recall@3": 0.9428571428571428,
+    "recall@5": 1.0,
+    "mrr": 0.859047619047619,
+    "reaches_prompt": 0.9714285714285714,
+    "context_hit": 0.9714285714285714,
+    "context_chars_mean": 3372.8571428571427,
+    "context_chars_max": 5385,
+    "context_tokens_max_est": 1538,
+    "fact_coverage": 0.8142857142857143,
+    "all_facts": 0.7714285714285715,
+    "keyword_k": 5,
+    "keyword_empty": 0,
+    "keyword_finds_answer": 32,
+    "off_topic_refused": 0.8888888888888888,
+    "near_topic": {
+      "total": 23,
+      "gate_refused": 7,
+      "passed_min_distance": 0.2753222532858476,
+      "passed_max_distance": 0.47205501128553773
+    }
+  },
+  "items": [
+    {
+      "id": "cable-critical-fatigue-area",
+      "question": "How is a critical fatigue area defined for aircraft control cables?",
+      "rank": 1,
+      "best_hit_distance": 0.3217417385270236,
+      "top_distance": 0.3217417385270236,
+      "gate_distance": 0.3217417385270236,
+      "served_hit_distance": 0.3217417385270236,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 1673,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "critical": 44,
+        "fatigue": 26,
+        "area": 315,
+        "defined": 24,
+        "aircraft": 524,
+        "control": 171,
+        "cables": 171
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "cable-broken-wire-check",
+      "question": "How do I find broken wires in a control cable during an inspection?",
+      "rank": 1,
+      "best_hit_distance": 0.3865284418812578,
+      "top_distance": 0.3865284418812578,
+      "gate_distance": 0.3865284418812578,
+      "served_hit_distance": 0.3865284418812578,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4084,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "broken": 36,
+        "wires": 338,
+        "control": 171,
+        "cable": 171,
+        "inspection": 408
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "cable-kink-popped-core",
+      "question": "When must a kinked control cable or one with a popped core be replaced?",
+      "rank": 2,
+      "best_hit_distance": 0.3685771038704244,
+      "top_distance": 0.3402349346666024,
+      "gate_distance": 0.3402349346666024,
+      "served_hit_distance": 0.3685771038704244,
+      "rr": 0.5,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 3688,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "kinked": 19,
+        "control": 171,
+        "cable": 171,
+        "popped": 3,
+        "core": 49,
+        "replaced": 226
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "cable-wear-limit",
+      "question": "How much can the outer wires of a control cable wear before the cable has to be replaced?",
+      "rank": 1,
+      "best_hit_distance": 0.40496765286307823,
+      "top_distance": 0.40496765286307823,
+      "gate_distance": 0.40496765286307823,
+      "served_hit_distance": 0.40496765286307823,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4269,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "outer": 34,
+        "wires": 338,
+        "control": 171,
+        "cable": 171,
+        "wear": 66,
+        "replaced": 226
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "cable-proof-load",
+      "question": "What proof load is used to test cable terminals and splices before installation?",
+      "rank": 1,
+      "best_hit_distance": 0.2608374577510717,
+      "top_distance": 0.2608374577510717,
+      "gate_distance": 0.2608374577510717,
+      "served_hit_distance": 0.2608374577510717,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 1776,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "proof": 32,
+        "load": 144,
+        "test": 214,
+        "cable": 171,
+        "terminals": 96,
+        "splices": 84,
+        "installation": 313
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "rivet-edge-distance",
+      "question": "What is the minimum edge distance and spacing for a single row of rivets?",
+      "rank": 1,
+      "best_hit_distance": 0.25686462264444965,
+      "top_distance": 0.31638936302725174,
+      "gate_distance": 0.25686462264444965,
+      "served_hit_distance": 0.25686462264444965,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 2533,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "minimum": 105,
+        "edge": 148,
+        "distance": 52,
+        "spacing": 55,
+        "single": 76,
+        "rivets": 104
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "plywood-scarf-slope",
+      "question": "What slope is the steepest allowed for a scarf patch in a plywood skin?",
+      "rank": 1,
+      "best_hit_distance": 0.2121988986314629,
+      "top_distance": 0.2121988986314629,
+      "gate_distance": 0.2121988986314629,
+      "served_hit_distance": 0.2121988986314629,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4611,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "slope": 8,
+        "steepest": 1,
+        "allowed": 152,
+        "scarf": 25,
+        "patch": 69,
+        "plywood": 50,
+        "skin": 91
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "safety-wire-diameter",
+      "question": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
+      "rank": 1,
+      "best_hit_distance": 0.27331673543054213,
+      "top_distance": 0.27331673543054213,
+      "gate_distance": 0.27331673543054213,
+      "served_hit_distance": 0.27331673543054213,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 2822,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "diameter": 120,
+        "safety": 107,
+        "wire": 338,
+        "double": 38,
+        "twist": 33,
+        "method": 261,
+        "parts": 346,
+        "holes": 169
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "turnbuckle-exposed-threads",
+      "question": "After safetying a turnbuckle, how many threads of the terminal may still show?",
+      "rank": 1,
+      "best_hit_distance": 0.2940046646611232,
+      "top_distance": 0.2940046646611232,
+      "gate_distance": 0.2940046646611232,
+      "served_hit_distance": 0.2940046646611232,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4054,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "safetying": 107,
+        "turnbuckle": 33,
+        "threads": 98,
+        "terminal": 96
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "bond-resistance",
+      "question": "What resistance must the electrical bond between a piece of equipment and the aircraft structure have?",
+      "rank": 1,
+      "best_hit_distance": 0.3032805558108571,
+      "top_distance": 0.3032805558108571,
+      "gate_distance": 0.3032805558108571,
+      "served_hit_distance": 0.3032805558108571,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 5155,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "resistance": 144,
+        "electrical": 185,
+        "bond": 139,
+        "piece": 65,
+        "equipment": 206,
+        "aircraft": 524,
+        "structure": 283
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "galvanic-corrosion",
+      "question": "What is galvanic corrosion and how can I recognise it?",
+      "rank": 1,
+      "best_hit_distance": 0.35043762025606007,
+      "top_distance": 0.35043762025606007,
+      "gate_distance": 0.35043762025606007,
+      "served_hit_distance": 0.35043762025606007,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 3916,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "galvanic": 11,
+        "corrosion": 259,
+        "recognise": 7
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "exfoliation-corrosion",
+      "question": "What does exfoliation corrosion look like and where does it usually show up?",
+      "rank": 1,
+      "best_hit_distance": 0.2976817393045319,
+      "top_distance": 0.2976817393045319,
+      "gate_distance": 0.2976817393045319,
+      "served_hit_distance": 0.2976817393045319,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 1833,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "exfoliation": 7,
+        "corrosion": 259,
+        "usually": 120
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "titanium-oxide-colours",
+      "question": "Why does heated titanium change colour, and should the coloured film be removed?",
+      "rank": 1,
+      "best_hit_distance": 0.40205614468758355,
+      "top_distance": 0.40205614468758355,
+      "gate_distance": 0.40205614468758355,
+      "served_hit_distance": 0.40205614468758355,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 798,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "heated": 172,
+        "titanium": 18,
+        "change": 89,
+        "colour": 56,
+        "coloured": 56,
+        "film": 67,
+        "removed": 319
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "default-torque-table",
+      "question": "Which torque values do I use for nuts and bolts when the manufacturer gives none?",
+      "rank": 1,
+      "best_hit_distance": 0.3517352375510714,
+      "top_distance": 0.3517352375510714,
+      "gate_distance": 0.3517352375510714,
+      "served_hit_distance": 0.3517352375510714,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4085,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "torque": 44,
+        "values": 45,
+        "nuts": 94,
+        "bolts": 137,
+        "manufacturer": 361,
+        "gives": 21
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "unvented-fuel-cap",
+      "question": "What goes wrong if a vented fuel tank cap is replaced with an unvented one?",
+      "rank": 1,
+      "best_hit_distance": 0.379714772667222,
+      "top_distance": 0.379714772667222,
+      "gate_distance": 0.379714772667222,
+      "served_hit_distance": 0.379714772667222,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 1188,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "vented": 21,
+        "fuel": 67,
+        "tank": 28,
+        "replaced": 226,
+        "unvented": 1
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "weld-metal-fuel-tank",
+      "question": "Can a metal fuel tank be welded or soldered, and what has to be done first?",
+      "rank": 2,
+      "best_hit_distance": 0.4949409046522434,
+      "top_distance": 0.4221481044623311,
+      "gate_distance": 0.3920815510919339,
+      "served_hit_distance": 0.4949409046522434,
+      "rr": 0.5,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 3820,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "metal": 277,
+        "fuel": 67,
+        "tank": 28,
+        "welded": 121,
+        "soldered": 28
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "wire-support-spacing",
+      "question": "How far apart can clamps be when supporting wires and cables in an aircraft?",
+      "rank": 1,
+      "best_hit_distance": 0.3694424124233405,
+      "top_distance": 0.3694424124233405,
+      "gate_distance": 0.3277945548205964,
+      "served_hit_distance": 0.3694424124233405,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 5341,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "apart": 12,
+        "clamps": 79,
+        "supporting": 69,
+        "wires": 338,
+        "cables": 171,
+        "aircraft": 524
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "tire-inflation-gas",
+      "question": "Which gas is recommended for inflating aircraft tires, and which must never be used?",
+      "rank": 1,
+      "best_hit_distance": 0.3285138994334651,
+      "top_distance": 0.3285138994334651,
+      "gate_distance": 0.3285138994334651,
+      "served_hit_distance": 0.3285138994334651,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 2627,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "recommended": 176,
+        "inflating": 22,
+        "aircraft": 524,
+        "tires": 25
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "lead-acid-nicad-storage",
+      "question": "Why is it dangerous to service lead-acid and nickel-cadmium batteries in the same area?",
+      "rank": 1,
+      "best_hit_distance": 0.47532523266667537,
+      "top_distance": 0.47532523266667537,
+      "gate_distance": 0.47532523266667537,
+      "served_hit_distance": 0.47532523266667537,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 1099,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "dangerous": 20,
+        "service": 129,
+        "lead": 109,
+        "acid": 59,
+        "nickel": 33,
+        "cadmium": 20,
+        "batteries": 53,
+        "area": 315
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "magnetic-particle-materials",
+      "question": "Which materials can be checked with magnetic particle inspection?",
+      "rank": 1,
+      "best_hit_distance": 0.2776831603739982,
+      "top_distance": 0.2776831603739982,
+      "gate_distance": 0.2776831603739982,
+      "served_hit_distance": 0.2776831603739982,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4505,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "materials": 372,
+        "checked": 212,
+        "magnetic": 68,
+        "particle": 62,
+        "inspection": 408
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "fabric-punch-tester",
+      "question": "How reliable is a mechanical punch tester for judging the condition of aircraft fabric?",
+      "rank": 1,
+      "best_hit_distance": 0.36543403907988603,
+      "top_distance": 0.36543403907988603,
+      "gate_distance": 0.36543403907988603,
+      "served_hit_distance": 0.36543403907988603,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4164,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "reliable": 17,
+        "mechanical": 150,
+        "punch": 6,
+        "tester": 14,
+        "judging": 0,
+        "condition": 218,
+        "aircraft": 524,
+        "fabric": 164
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "gas-cylinder-securing",
+      "question": "How should oxygen and fuel gas cylinders be secured in a welding area?",
+      "rank": 1,
+      "best_hit_distance": 0.3326016665813315,
+      "top_distance": 0.3326016665813315,
+      "gate_distance": 0.3326016665813315,
+      "served_hit_distance": 0.3326016665813315,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 5385,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "oxygen": 47,
+        "fuel": 67,
+        "cylinders": 68,
+        "secured": 122,
+        "welding": 121,
+        "area": 315
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "blasting-dwell-time",
+      "question": "How long may an abrasive blast stream stay on one spot of an aluminium skin?",
+      "rank": 1,
+      "best_hit_distance": 0.3443233185199459,
+      "top_distance": 0.3443233185199459,
+      "gate_distance": 0.3443233185199459,
+      "served_hit_distance": 0.3443233185199459,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4051,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "abrasive": 65,
+        "blast": 24,
+        "stream": 8,
+        "stay": 3,
+        "spot": 30,
+        "aluminium": 161,
+        "skin": 91
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "empty-weight-cg",
+      "question": "What is the empty weight center of gravity of an aircraft?",
+      "rank": 1,
+      "best_hit_distance": 0.3147395098830438,
+      "top_distance": 0.3147395098830438,
+      "gate_distance": 0.3147395098830438,
+      "served_hit_distance": 0.3147395098830438,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 2120,
+      "facts_found": 1,
+      "facts_total": 1,
+      "term_counts": {
+        "empty": 24,
+        "weight": 70,
+        "center": 80,
+        "gravity": 22,
+        "aircraft": 524
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-approved-data-conditions",
+      "question": "What conditions must be met for AC 43.13-1B repair data to be used as FAA-approved data for a repair to a nonpressurized area of a civil aircraft?",
+      "rank": 1,
+      "best_hit_distance": 0.2941122405662623,
+      "top_distance": 0.2941122405662623,
+      "gate_distance": 0.2941122405662623,
+      "served_hit_distance": 0.2941122405662623,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 2215,
+      "facts_found": 3,
+      "facts_total": 3,
+      "term_counts": {
+        "conditions": 218,
+        "1b": 1,
+        "repair": 330,
+        "data": 64,
+        "approved": 106,
+        "nonpressurized": 3,
+        "area": 315,
+        "civil": 9,
+        "aircraft": 524
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-manufacturer-instructions-first",
+      "question": "When does the circular require a mechanic to follow the manufacturer\u2019s maintenance manual or instructions for continued airworthiness instead of using its general methods?",
+      "rank": 2,
+      "best_hit_distance": 0.4334014505451875,
+      "top_distance": 0.3806167371733953,
+      "gate_distance": 0.3806167371733953,
+      "served_hit_distance": null,
+      "rr": 0.5,
+      "reaches_prompt": false,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": false,
+      "context_chars": 2353,
+      "facts_found": 1,
+      "facts_total": 2,
+      "term_counts": {
+        "circular": 23,
+        "require": 340,
+        "mechanic": 150,
+        "follow": 287,
+        "manufacturer": 361,
+        "maintenance": 140,
+        "manual": 86,
+        "instructions": 129,
+        "continued": 124,
+        "airworthiness": 40,
+        "instead": 12,
+        "general": 301,
+        "methods": 261
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": false
+    },
+    {
+      "id": "user-ndi-crack-methods",
+      "question": "What inspection methods does the circular describe for finding cracks in metal structures, and what are the limitations of each?",
+      "rank": 5,
+      "best_hit_distance": 0.49353271568595747,
+      "top_distance": 0.4685982540611615,
+      "gate_distance": 0.41336418946490827,
+      "served_hit_distance": 0.5080901970755785,
+      "rr": 0.2,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 2893,
+      "facts_found": 0,
+      "facts_total": 3,
+      "term_counts": {
+        "inspection": 408,
+        "methods": 261,
+        "circular": 23,
+        "finding": 16,
+        "cracks": 181,
+        "metal": 277,
+        "structures": 283,
+        "limitations": 118
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-rivet-size-spacing",
+      "question": "How should a mechanic determine rivet size, spacing, and edge distance when making a sheet-metal repair?",
+      "rank": 1,
+      "best_hit_distance": 0.389410548491147,
+      "top_distance": 0.389410548491147,
+      "gate_distance": 0.389410548491147,
+      "served_hit_distance": 0.389410548491147,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4007,
+      "facts_found": 1,
+      "facts_total": 2,
+      "term_counts": {
+        "mechanic": 150,
+        "determine": 184,
+        "rivet": 104,
+        "size": 170,
+        "spacing": 55,
+        "edge": 148,
+        "distance": 52,
+        "making": 139,
+        "sheet": 90,
+        "metal": 277,
+        "repair": 330
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-corrosion-repair-replace",
+      "question": "What practices does the circular recommend for repairing corrosion damage, and when should a damaged part be replaced?",
+      "rank": 1,
+      "best_hit_distance": 0.3903963463789527,
+      "top_distance": 0.3903963463789527,
+      "gate_distance": 0.38054552542076125,
+      "served_hit_distance": 0.3903963463789527,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 1528,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "practices": 92,
+        "circular": 23,
+        "recommend": 176,
+        "repairing": 330,
+        "corrosion": 259,
+        "damage": 256,
+        "damaged": 256,
+        "part": 346,
+        "replaced": 226
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-drilling-deburring",
+      "question": "What precautions does it give for drilling, cutting, and deburring aircraft sheet metal?",
+      "rank": 3,
+      "best_hit_distance": 0.43711059892150006,
+      "top_distance": 0.4312696129177115,
+      "gate_distance": 0.4312696129177115,
+      "served_hit_distance": 0.43711059892150006,
+      "rr": 0.3333333333333333,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 3868,
+      "facts_found": 0,
+      "facts_total": 2,
+      "term_counts": {
+        "precautions": 54,
+        "drilling": 53,
+        "cutting": 125,
+        "deburring": 3,
+        "aircraft": 524,
+        "sheet": 90,
+        "metal": 277
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-bolts-nuts-safetying",
+      "question": "How does the circular describe selecting and installing bolts, nuts, and safety devices?",
+      "rank": 2,
+      "best_hit_distance": 0.43108911248716986,
+      "top_distance": 0.4748896553652031,
+      "gate_distance": 0.43108911248716986,
+      "served_hit_distance": 0.43108911248716986,
+      "rr": 0.5,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 3500,
+      "facts_found": 2,
+      "facts_total": 2,
+      "term_counts": {
+        "circular": 23,
+        "selecting": 105,
+        "installing": 313,
+        "bolts": 137,
+        "nuts": 94,
+        "safety": 107,
+        "devices": 82
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": false
+    },
+    {
+      "id": "user-wood-inspection-scarf",
+      "question": "What does it recommend for inspecting and repairing wooden aircraft structures, including splices or scarf joints?",
+      "rank": 5,
+      "best_hit_distance": 0.37605844068689165,
+      "top_distance": 0.34087091549553217,
+      "gate_distance": 0.34087091549553217,
+      "served_hit_distance": 0.37605844068689165,
+      "rr": 0.2,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 0.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 4805,
+      "facts_found": 0,
+      "facts_total": 2,
+      "term_counts": {
+        "recommend": 176,
+        "inspecting": 408,
+        "repairing": 330,
+        "wooden": 17,
+        "aircraft": 524,
+        "structures": 283,
+        "including": 107,
+        "splices": 84,
+        "scarf": 25,
+        "joints": 98
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-fabric-inspect-repair",
+      "question": "What procedures does it describe for inspecting, preserving, or repairing fabric-covered aircraft surfaces?",
+      "rank": 3,
+      "best_hit_distance": 0.34645798239224546,
+      "top_distance": 0.40240153160149994,
+      "gate_distance": 0.34645798239224546,
+      "served_hit_distance": 0.34645798239224546,
+      "rr": 0.3333333333333333,
+      "reaches_prompt": true,
+      "recall@1": 0.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 5057,
+      "facts_found": 1,
+      "facts_total": 2,
+      "term_counts": {
+        "procedures": 159,
+        "inspecting": 408,
+        "preserving": 23,
+        "repairing": 330,
+        "fabric": 164,
+        "covered": 163,
+        "aircraft": 524,
+        "surfaces": 406
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": false
+    },
+    {
+      "id": "user-wiring-inspect-repair",
+      "question": "What guidance does it give for inspecting and repairing aircraft electrical wiring and connections?",
+      "rank": 1,
+      "best_hit_distance": 0.35466542943361024,
+      "top_distance": 0.35466542943361024,
+      "gate_distance": 0.35466542943361024,
+      "served_hit_distance": 0.35466542943361024,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 5175,
+      "facts_found": 0,
+      "facts_total": 2,
+      "term_counts": {
+        "guidance": 3,
+        "inspecting": 408,
+        "repairing": 330,
+        "aircraft": 524,
+        "electrical": 185,
+        "wiring": 338,
+        "connections": 123
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    },
+    {
+      "id": "user-transparent-plastics",
+      "question": "What does it recommend for inspecting and repairing transparent plastic aircraft components, such as windows or windshields?",
+      "rank": 1,
+      "best_hit_distance": 0.37182243894472244,
+      "top_distance": 0.37182243894472244,
+      "gate_distance": 0.37182243894472244,
+      "served_hit_distance": 0.37182243894472244,
+      "rr": 1.0,
+      "reaches_prompt": true,
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "context_hit": true,
+      "context_chars": 3052,
+      "facts_found": 0,
+      "facts_total": 2,
+      "term_counts": {
+        "recommend": 176,
+        "inspecting": 408,
+        "repairing": 330,
+        "transparent": 14,
+        "plastic": 103,
+        "aircraft": 524,
+        "components": 142,
+        "windows": 10,
+        "windshields": 11
+      },
+      "keyword_k": 5,
+      "keyword_hits": 5,
+      "keyword_finds_answer": true
+    }
+  ],
+  "off_topic": [
+    {
+      "id": "capital-of-france",
+      "kind": "generic",
+      "question": "what is the capital of France?",
+      "top_distance": 0.8010204376614788,
+      "gate_distance": 0.8010204376614788,
+      "refused": true,
+      "term_counts": {
+        "capital": 0,
+        "france": 0
+      }
+    },
+    {
+      "id": "chocolate-cake",
+      "kind": "generic",
+      "question": "give me a recipe for a chocolate cake",
+      "top_distance": 0.7180279249036043,
+      "gate_distance": 0.7180279249036043,
+      "refused": true,
+      "term_counts": {
+        "recipe": 0,
+        "chocolate": 0,
+        "cake": 0
+      }
+    },
+    {
+      "id": "kubernetes-ingress",
+      "kind": "generic",
+      "question": "how do I configure an ingress controller in Kubernetes?",
+      "top_distance": 0.709641019191499,
+      "gate_distance": 0.709641019191499,
+      "refused": true,
+      "term_counts": {
+        "configure": 26,
+        "ingress": 0,
+        "controller": 171,
+        "kubernetes": 0
+      }
+    },
+    {
+      "id": "a320-max-takeoff-weight",
+      "kind": "outside",
+      "question": "What is the maximum takeoff weight of an Airbus A320?",
+      "top_distance": 0.5337780714034901,
+      "gate_distance": 0.5337780714034901,
+      "refused": true,
+      "term_counts": {
+        "maximum": 103,
+        "takeoff": 8,
+        "weight": 70,
+        "airbus": 0,
+        "a320": 0
+      }
+    },
+    {
+      "id": "b737-jacking",
+      "kind": "outside",
+      "question": "How do I jack up a Boeing 737 to change a main wheel?",
+      "top_distance": 0.4651969795714652,
+      "gate_distance": 0.4651969795714652,
+      "refused": false,
+      "term_counts": {
+        "jack": 7,
+        "boeing": 0,
+        "change": 89,
+        "main": 19,
+        "wheel": 55
+      }
+    },
+    {
+      "id": "g1000-flight-plan",
+      "kind": "outside",
+      "question": "How do I load a flight plan into a Garmin G1000?",
+      "top_distance": 0.5742122684644022,
+      "gate_distance": 0.5742122684644022,
+      "refused": true,
+      "term_counts": {
+        "load": 144,
+        "flight": 89,
+        "plan": 4,
+        "garmin": 0,
+        "g1000": 0
+      }
+    },
+    {
+      "id": "mel-dispatch",
+      "kind": "outside",
+      "question": "What are the rules for dispatching with an inoperative item under the minimum equipment list?",
+      "top_distance": 0.5156069919552841,
+      "gate_distance": 0.5156069919552841,
+      "refused": true,
+      "term_counts": {
+        "rules": 15,
+        "dispatching": 0,
+        "inoperative": 4,
+        "item": 54,
+        "minimum": 105,
+        "equipment": 206
+      }
+    },
+    {
+      "id": "ge90-fan-blades",
+      "kind": "outside",
+      "question": "How do I replace the fan blades on a GE90 turbofan engine?",
+      "top_distance": 0.5456352586903783,
+      "gate_distance": 0.5272491324989025,
+      "refused": true,
+      "term_counts": {
+        "replace": 226,
+        "blades": 40,
+        "ge90": 0,
+        "turbofan": 0,
+        "engine": 144
+      }
+    },
+    {
+      "id": "outflow-valve",
+      "kind": "outside",
+      "question": "How is a cabin pressurization outflow valve adjusted on an airliner?",
+      "top_distance": 0.51442563877717,
+      "gate_distance": 0.481786098799603,
+      "refused": true,
+      "term_counts": {
+        "cabin": 17,
+        "pressurization": 155,
+        "outflow": 0,
+        "valve": 66,
+        "adjusted": 62,
+        "airliner": 0
+      }
+    },
+    {
+      "id": "carbon-propeller-repair",
+      "kind": "near_topic",
+      "question": "How do I repair a carbon fiber propeller blade?",
+      "top_distance": 0.46185519609246084,
+      "gate_distance": 0.4296202831781407,
+      "refused": false,
+      "term_counts": {
+        "repair": 330,
+        "carbon": 48,
+        "fiber": 47,
+        "propeller": 69,
+        "blade": 40
+      }
+    },
+    {
+      "id": "helicopter-rotor-bolt",
+      "kind": "near_topic",
+      "question": "What torque applies to a helicopter main rotor blade bolt?",
+      "top_distance": 0.49811603089606316,
+      "gate_distance": 0.47205501128553773,
+      "refused": false,
+      "term_counts": {
+        "torque": 44,
+        "applies": 222,
+        "helicopter": 1,
+        "main": 19,
+        "rotor": 6,
+        "blade": 40,
+        "bolt": 137
+      }
+    },
+    {
+      "id": "spark-plug-gap",
+      "kind": "near_topic",
+      "question": "What gap should the electrodes of an aircraft spark plug be set to?",
+      "top_distance": 0.38740984276469126,
+      "gate_distance": 0.3639173265276645,
+      "refused": false,
+      "term_counts": {
+        "electrodes": 24,
+        "aircraft": 524,
+        "spark": 36,
+        "plug": 70
+      }
+    },
+    {
+      "id": "tire-pressure-value",
+      "kind": "near_topic",
+      "question": "What pressure should the main landing gear tires of a light aircraft be inflated to?",
+      "top_distance": 0.3341578242214307,
+      "gate_distance": 0.3341578242214307,
+      "refused": false,
+      "term_counts": {
+        "pressure": 155,
+        "main": 19,
+        "landing": 71,
+        "gear": 72,
+        "tires": 25,
+        "light": 101,
+        "aircraft": 524,
+        "inflated": 22
+      }
+    },
+    {
+      "id": "strut-nitrogen-pressure",
+      "kind": "near_topic",
+      "question": "What nitrogen pressure should a nose gear shock strut be serviced to?",
+      "top_distance": 0.42827205152415204,
+      "gate_distance": 0.42827205152415204,
+      "refused": false,
+      "term_counts": {
+        "nitrogen": 6,
+        "pressure": 155,
+        "nose": 20,
+        "gear": 72,
+        "shock": 29,
+        "strut": 29,
+        "serviced": 129
+      }
+    },
+    {
+      "id": "aileron-cable-tension",
+      "kind": "near_topic",
+      "question": "What tension should the aileron control cables be rigged to?",
+      "top_distance": 0.3553384158216951,
+      "gate_distance": 0.3553384158216951,
+      "refused": false,
+      "term_counts": {
+        "tension": 56,
+        "aileron": 3,
+        "control": 171,
+        "cables": 171,
+        "rigged": 6
+      }
+    },
+    {
+      "id": "elt-battery-hours",
+      "kind": "near_topic",
+      "question": "After how many hours of cumulative use must an ELT battery be replaced?",
+      "top_distance": 0.48215174674987427,
+      "gate_distance": 0.42704769534156783,
+      "refused": false,
+      "term_counts": {
+        "hours": 59,
+        "cumulative": 2,
+        "battery": 53,
+        "replaced": 226
+      }
+    },
+    {
+      "id": "lycoming-o360-tbo",
+      "kind": "near_topic",
+      "question": "What is the time between overhaul for a Lycoming O-360 engine?",
+      "top_distance": 0.49332404375408156,
+      "gate_distance": 0.49332404375408156,
+      "refused": true,
+      "term_counts": {
+        "time": 149,
+        "overhaul": 26,
+        "lycoming": 1,
+        "engine": 144
+      }
+    },
+    {
+      "id": "magneto-rpm-drop",
+      "kind": "near_topic",
+      "question": "What is the maximum RPM drop allowed when checking each magneto during the engine run-up?",
+      "top_distance": 0.4444534215680387,
+      "gate_distance": 0.4428883088625737,
+      "refused": false,
+      "term_counts": {
+        "maximum": 103,
+        "drop": 38,
+        "allowed": 152,
+        "checking": 212,
+        "magneto": 10,
+        "engine": 144
+      }
+    },
+    {
+      "id": "fixed-pitch-static-rpm",
+      "kind": "near_topic",
+      "question": "What static RPM should a fixed-pitch propeller reach during a ground run-up?",
+      "top_distance": 0.506783143292324,
+      "gate_distance": 0.48605872732220734,
+      "refused": true,
+      "term_counts": {
+        "static": 42,
+        "fixed": 25,
+        "pitch": 16,
+        "propeller": 69,
+        "reach": 37,
+        "ground": 102
+      }
+    },
+    {
+      "id": "brake-disk-runout",
+      "kind": "near_topic",
+      "question": "What is the maximum allowable runout of a brake disk?",
+      "top_distance": 0.5870798087858804,
+      "gate_distance": 0.5870798087858804,
+      "refused": true,
+      "term_counts": {
+        "maximum": 103,
+        "allowable": 152,
+        "runout": 0,
+        "brake": 11,
+        "disk": 5
+      }
+    },
+    {
+      "id": "deicer-boot-pressure",
+      "kind": "near_topic",
+      "question": "What air pressure inflates the rubber deicer boots on a wing leading edge?",
+      "top_distance": 0.4607307683114584,
+      "gate_distance": 0.4607307683114584,
+      "refused": false,
+      "term_counts": {
+        "pressure": 155,
+        "inflates": 22,
+        "rubber": 44,
+        "deicer": 1,
+        "boots": 6,
+        "wing": 87,
+        "leading": 109,
+        "edge": 148
+      }
+    },
+    {
+      "id": "prepreg-freezer-life",
+      "kind": "near_topic",
+      "question": "How many months can prepreg fabric be stored in a freezer before it expires?",
+      "top_distance": 0.5859509706497075,
+      "gate_distance": 0.5198004198549631,
+      "refused": true,
+      "term_counts": {
+        "months": 13,
+        "prepreg": 9,
+        "fabric": 164,
+        "stored": 18,
+        "freezer": 1,
+        "expires": 8
+      }
+    },
+    {
+      "id": "epoxy-glass-transition",
+      "kind": "near_topic",
+      "question": "What is the glass transition temperature of a typical epoxy laminating resin?",
+      "top_distance": 0.5477951609477849,
+      "gate_distance": 0.5064250389374674,
+      "refused": true,
+      "term_counts": {
+        "glass": 39,
+        "transition": 0,
+        "temperature": 177,
+        "typical": 118,
+        "epoxy": 19,
+        "laminating": 29,
+        "resin": 35
+      }
+    },
+    {
+      "id": "spar-cap-pitting-limit",
+      "kind": "near_topic",
+      "question": "How deep may corrosion pitting be on a wing spar cap before the spar must be replaced?",
+      "top_distance": 0.4169651641640534,
+      "gate_distance": 0.4169651641640534,
+      "refused": false,
+      "term_counts": {
+        "deep": 14,
+        "corrosion": 259,
+        "pitting": 40,
+        "wing": 87,
+        "spar": 44,
+        "replaced": 226
+      }
+    },
+    {
+      "id": "seat-belt-age",
+      "kind": "near_topic",
+      "question": "After how many years must aircraft seat belts be replaced?",
+      "top_distance": 0.42051570660056514,
+      "gate_distance": 0.38310491980205497,
+      "refused": false,
+      "term_counts": {
+        "years": 28,
+        "aircraft": 524,
+        "seat": 22,
+        "belts": 5,
+        "replaced": 226
+      }
+    },
+    {
+      "id": "fire-bottle-cartridge",
+      "kind": "near_topic",
+      "question": "How often must the discharge cartridge on an engine fire extinguisher bottle be replaced?",
+      "top_distance": 0.560326237620185,
+      "gate_distance": 0.560326237620185,
+      "refused": true,
+      "term_counts": {
+        "often": 51,
+        "discharge": 26,
+        "cartridge": 3,
+        "engine": 144,
+        "fire": 51,
+        "extinguisher": 11,
+        "bottle": 12,
+        "replaced": 226
+      }
+    },
+    {
+      "id": "oil-change-interval",
+      "kind": "near_topic",
+      "question": "How many flight hours are allowed between oil changes on a piston aircraft engine?",
+      "top_distance": 0.4682643337879826,
+      "gate_distance": 0.4682643337879826,
+      "refused": false,
+      "term_counts": {
+        "flight": 89,
+        "hours": 59,
+        "allowed": 152,
+        "changes": 89,
+        "piston": 18,
+        "aircraft": 524,
+        "engine": 144
+      }
+    },
+    {
+      "id": "compressor-blade-dent",
+      "kind": "near_topic",
+      "question": "What is the maximum dent depth allowed on a turbine engine compressor blade?",
+      "top_distance": 0.5142190405539095,
+      "gate_distance": 0.4976344114221546,
+      "refused": true,
+      "term_counts": {
+        "maximum": 103,
+        "dent": 32,
+        "depth": 29,
+        "allowed": 152,
+        "turbine": 8,
+        "engine": 144,
+        "compressor": 2,
+        "blade": 40
+      }
+    },
+    {
+      "id": "user-carbon-panel-delamination",
+      "kind": "near_topic",
+      "question": "What procedure does it give for repairing a delamination in a specific modern carbon-fiber aircraft panel?",
+      "top_distance": 0.4572368417131236,
+      "gate_distance": 0.4018925545343309,
+      "refused": false,
+      "term_counts": {
+        "repairing": 330,
+        "delamination": 12,
+        "specific": 206,
+        "modern": 7,
+        "carbon": 48,
+        "fiber": 47,
+        "aircraft": 524,
+        "panel": 57
+      }
+    },
+    {
+      "id": "user-specific-spar-crack",
+      "kind": "near_topic",
+      "question": "What is the approved repair for a cracked wing spar on a particular aircraft, given its make, model, serial number, and damage location?",
+      "top_distance": 0.36712064849147674,
+      "gate_distance": 0.2753222532858476,
+      "refused": false,
+      "term_counts": {
+        "approved": 106,
+        "repair": 330,
+        "cracked": 181,
+        "wing": 87,
+        "spar": 44,
+        "particular": 91,
+        "aircraft": 524,
+        "model": 20,
+        "serial": 3,
+        "number": 118,
+        "damage": 256,
+        "location": 140
+      }
+    },
+    {
+      "id": "user-specific-fastener-torque",
+      "kind": "near_topic",
+      "question": "What exact torque value should be used for a particular fastener in a specific aircraft installation?",
+      "top_distance": 0.42498976662230803,
+      "gate_distance": 0.33900847071459717,
+      "refused": false,
+      "term_counts": {
+        "exact": 16,
+        "torque": 44,
+        "value": 45,
+        "particular": 91,
+        "fastener": 56,
+        "specific": 206,
+        "aircraft": 524,
+        "installation": 313
+      }
+    },
+    {
+      "id": "user-ad-compliance",
+      "kind": "near_topic",
+      "question": "Does the circular address whether a proposed repair complies with the latest airworthiness directive or other current requirement for a particular aircraft?",
+      "top_distance": 0.3992011782650393,
+      "gate_distance": 0.3992011782650393,
+      "refused": false,
+      "term_counts": {
+        "circular": 23,
+        "address": 5,
+        "proposed": 3,
+        "repair": 330,
+        "complies": 5,
+        "latest": 3,
+        "airworthiness": 40,
+        "directive": 161,
+        "current": 150,
+        "requirement": 340,
+        "particular": 91,
+        "aircraft": 524
+      }
+    }
+  ],
+  "sweep": [
+    {
+      "max_distance": 0.3,
+      "reaches_prompt": 0.22857142857142856,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.32,
+      "reaches_prompt": 0.2857142857142857,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.34,
+      "reaches_prompt": 0.4,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.36,
+      "reaches_prompt": 0.6,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.38,
+      "reaches_prompt": 0.6857142857142857,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.4,
+      "reaches_prompt": 0.8,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.42,
+      "reaches_prompt": 0.8857142857142857,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.44,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.46,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.48,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.8888888888888888
+    },
+    {
+      "max_distance": 0.5,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.7777777777777778
+    },
+    {
+      "max_distance": 0.52,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.6666666666666666
+    },
+    {
+      "max_distance": 0.54,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.4444444444444444
+    },
+    {
+      "max_distance": 0.56,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.4444444444444444
+    },
+    {
+      "max_distance": 0.58,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.6,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.62,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.64,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.66,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.68,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.7,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.3333333333333333
+    },
+    {
+      "max_distance": 0.72,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.1111111111111111
+    },
+    {
+      "max_distance": 0.74,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.1111111111111111
+    },
+    {
+      "max_distance": 0.76,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.1111111111111111
+    },
+    {
+      "max_distance": 0.78,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.1111111111111111
+    },
+    {
+      "max_distance": 0.8,
+      "reaches_prompt": 0.9714285714285714,
+      "off_topic_refused": 0.1111111111111111
+    }
+  ],
+  "answerability": [
+    {
+      "min_chunks": 1,
+      "min_unknown": 1,
+      "valid_refused": 1,
+      "valid_total": 35,
+      "caught": 1,
+      "gate_missed": 1
+    },
+    {
+      "min_chunks": 1,
+      "min_unknown": 2,
+      "valid_refused": 0,
+      "valid_total": 35,
+      "caught": 0,
+      "gate_missed": 1
+    },
+    {
+      "min_chunks": 2,
+      "min_unknown": 1,
+      "valid_refused": 4,
+      "valid_total": 35,
+      "caught": 1,
+      "gate_missed": 1
+    },
+    {
+      "min_chunks": 2,
+      "min_unknown": 2,
+      "valid_refused": 0,
+      "valid_total": 35,
+      "caught": 0,
+      "gate_missed": 1
+    },
+    {
+      "min_chunks": 3,
+      "min_unknown": 1,
+      "valid_refused": 4,
+      "valid_total": 35,
+      "caught": 1,
+      "gate_missed": 1
+    },
+    {
+      "min_chunks": 3,
+      "min_unknown": 2,
+      "valid_refused": 0,
+      "valid_total": 35,
+      "caught": 0,
+      "gate_missed": 1
+    }
+  ],
+  "combined": [
+    {
+      "max_distance": 0.4,
+      "reaches_prompt": 0.7714285714285715,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.42,
+      "reaches_prompt": 0.8571428571428571,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.44,
+      "reaches_prompt": 0.9142857142857143,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.46,
+      "reaches_prompt": 0.9142857142857143,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.48,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.5,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.52,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.54,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.56,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.58,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.6,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    },
+    {
+      "max_distance": 0.62,
+      "reaches_prompt": 0.9428571428571428,
+      "off_topic_refused": 1.0
+    }
+  ]
+}

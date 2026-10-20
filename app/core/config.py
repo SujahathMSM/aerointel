@@ -44,12 +44,19 @@ class Settings(BaseSettings):
     context_max_distance: float | None = None
     temperature: float = 0.2
 
-    # Hybrid retrieval (Phase 1): BM25-style keyword search fused with
-    # vector search via Reciprocal Rank Fusion. Off by default so the
+    # Hybrid retrieval (Phase 1): Postgres full-text keyword search (ts_rank,
+    # not true BM25) fused with vector search via Reciprocal Rank Fusion. Off by default so the
     # vector-only baseline stays the default behavior until evals prove
     # hybrid is better.
     hybrid_enabled: bool = False
     rrf_k: int = 60
+    # How the keyword half reads the question. "all": a chunk must contain every
+    # word (websearch_to_tsquery joins them with AND); on the 35 golden questions
+    # it matched nothing for 27, so hybrid was vector-only for them. "any": a chunk
+    # matching any distinctive word counts, ranked by how much of the question it
+    # covers. Measured 2026-10-20: recall@5 0.943 -> 1.000, gate and live
+    # refusals unchanged (evals/results/kw_*.json, live_kw_any.json).
+    keyword_query: Literal["all", "any"] = "any"
 
     # Reranking (Phase 1): rescore the top-N candidates with a
     # cross-encoder that reads the full text. "none" keeps the baseline.
