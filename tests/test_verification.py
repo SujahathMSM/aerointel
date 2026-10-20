@@ -425,3 +425,19 @@ def test_an_invented_figure_is_not_located_anywhere():
 def test_without_citations_nothing_is_uncited():
     result = verify_answer("Use .071-inch wire.", [PAGE_7_19, PAGE_7_20])
     assert result.found_in_uncited == {}
+
+
+async def test_the_document_name_in_prose_matches_the_source_line(monkeypatch, mode):
+    # Live run 2026-10-20, user-rivet-size-spacing: the answer ended "as specified
+    # in AC 43.13-1B CHG 1" and the check flagged 43.13, because the source line
+    # writes the name "AC_43.13-1B_CHG_1" and "_" hid the number.
+    mode("flag")
+    prepared = _prepared()
+    prepared.chunks = [(_pdf_chunk(TORQUE_TABLE, 364, "7-9"), 0.3)]
+    result = await _ask(
+        monkeypatch,
+        "Use Table 7-1 [1], as specified in AC 43.13-1B CHG 1.",
+        prepared,
+    )
+    assert result.verification is not None
+    assert result.verification.ok, result.verification

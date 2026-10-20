@@ -1,6 +1,6 @@
 {
   "source": "AC_43.13-1B_CHG_1",
-  "about": "Questions a maintenance engineer could ask of FAA AC 43.13-1B (with Change 1). Each lists the PDF page(s) that actually answer it and 'facts': short phrases from the manual that the answer needs, both checked against the extracted text of the file fetched by scripts/fetch_sample_docs.ps1 (every fact sits inside one chunk on its page). 'pages' are PDF file page numbers (what a PDF viewer calls page N); 'labels' are the page numbers printed on those pages, for humans. A retrieved chunk counts as a hit when it comes from one of these pages; a fact counts as found when its text appears in a chunk the model would read (case and spacing ignored). 'off_topic' questions have no answer in the manual and must be refused: the first three are generic, the rest are aviation questions that this manual does not cover (checked: none of their key terms occur in it), which is the harder test for MAX_DISTANCE. Each off_topic entry has a 'kind': 'generic' (not aviation), 'outside' (aviation the manual does not cover; its key terms do not occur) or 'near_topic' (the manual covers the subject and uses its words, but not the specific figure or procedure asked for; 'manual_says' records what it does say, checked against the extracted text 2026-10-18). Near-topic questions pass the distance gate by design: they test the answer check and prompt rule 2, not MAX_DISTANCE.",
+  "about": "Questions a maintenance engineer could ask of FAA AC 43.13-1B (with Change 1). Each lists the PDF page(s) that actually answer it and 'facts': short phrases from the manual that the answer needs, both checked against the extracted text of the file fetched by scripts/fetch_sample_docs.ps1 (every fact sits inside one chunk on its page). 'pages' are PDF file page numbers (what a PDF viewer calls page N); 'labels' are the page numbers printed on those pages, for humans. A retrieved chunk counts as a hit when it comes from one of these pages; a fact counts as found when its text appears in a chunk the model would read (case and spacing ignored). 'off_topic' questions have no answer in the manual and must be refused: the first three are generic, the rest are aviation questions that this manual does not cover (checked: none of their key terms occur in it), which is the harder test for MAX_DISTANCE. Each off_topic entry has a 'kind': 'generic' (not aviation), 'outside' (aviation the manual does not cover; its key terms do not occur) or 'near_topic' (the manual covers the subject and uses its words, but not the specific figure or procedure asked for; 'manual_says' records what it does say, checked against the extracted text 2026-10-18). Near-topic questions pass the distance gate by design: they test the answer check and prompt rule 2, not MAX_DISTANCE. Entries with \"author\": \"user\" (added 2026-10-19) were written by the project owner, not by the author of the checker: broad, section-level questions whose answer spans several pages, so 'pages' lists every page that answers part of it and 'facts' are a few of the key phrases, each checked to sit whole in one chunk (paragraph chunking) on a listed page.",
   "items": [
     {
       "id": "cable-critical-fatigue-area",
@@ -325,6 +325,225 @@
       "facts": [
         "the empty weight center of gravity (ewcg) is the cg of an aircraft"
       ]
+    },
+    {
+      "id": "user-approved-data-conditions",
+      "author": "user",
+      "question": "What conditions must be met for AC 43.13-1B repair data to be used as FAA-approved data for a repair to a nonpressurized area of a civil aircraft?",
+      "pages": [
+        1
+      ],
+      "labels": [
+        "cover"
+      ],
+      "facts": [
+        "appropriate to the product being repaired",
+        "directly applicable to the repair being made",
+        "not contrary to manufacturer"
+      ]
+    },
+    {
+      "id": "user-manufacturer-instructions-first",
+      "author": "user",
+      "question": "When does the circular require a mechanic to follow the manufacturer\u2019s maintenance manual or instructions for continued airworthiness instead of using its general methods?",
+      "pages": [
+        1
+      ],
+      "labels": [
+        "cover"
+      ],
+      "facts": [
+        "unless the repair at issue is recommended against in the applicable manufacturer",
+        "prescribed in the current manufacturer\u2019s maintenance manual or instructions for continued airworthiness"
+      ]
+    },
+    {
+      "id": "user-ndi-crack-methods",
+      "author": "user",
+      "question": "What inspection methods does the circular describe for finding cracks in metal structures, and what are the limitations of each?",
+      "pages": [
+        248,
+        253,
+        254,
+        255,
+        279
+      ],
+      "labels": [
+        "5-1",
+        "5-6",
+        "5-7",
+        "5-8",
+        "5-32"
+      ],
+      "facts": [
+        "surface discontinuities only",
+        "electrically conductive materials",
+        "depth of discontinuity not indicated"
+      ]
+    },
+    {
+      "id": "user-rivet-size-spacing",
+      "author": "user",
+      "question": "How should a mechanic determine rivet size, spacing, and edge distance when making a sheet-metal repair?",
+      "pages": [
+        175,
+        176,
+        183,
+        191
+      ],
+      "labels": [
+        "4-24",
+        "4-25",
+        "4-32",
+        "4-40"
+      ],
+      "facts": [
+        "rivet spacing and edge distance should duplicate",
+        "approximately three times the thickness"
+      ]
+    },
+    {
+      "id": "user-corrosion-repair-replace",
+      "author": "user",
+      "question": "What practices does the circular recommend for repairing corrosion damage, and when should a damaged part be replaced?",
+      "pages": [
+        330,
+        336
+      ],
+      "labels": [
+        "6-24",
+        "6-30"
+      ],
+      "facts": [
+        "removal of all corrosion and corrosion products",
+        "exceeds the damage limits set by the aircraft or parts manufacturer, the part must be replaced"
+      ]
+    },
+    {
+      "id": "user-drilling-deburring",
+      "author": "user",
+      "question": "What precautions does it give for drilling, cutting, and deburring aircraft sheet metal?",
+      "pages": [
+        166,
+        167,
+        184
+      ],
+      "labels": [
+        "4-15",
+        "4-16",
+        "4-33"
+      ],
+      "facts": [
+        "deburr the hole with an oversize drill",
+        "drill relief holes"
+      ]
+    },
+    {
+      "id": "user-bolts-nuts-safetying",
+      "author": "user",
+      "question": "How does the circular describe selecting and installing bolts, nuts, and safety devices?",
+      "pages": [
+        360,
+        361,
+        362,
+        367,
+        371
+      ],
+      "labels": [
+        "7-5",
+        "7-6",
+        "7-7",
+        "7-12",
+        "7-16"
+      ],
+      "facts": [
+        "except self-locking nuts",
+        "do not reuse cotter pins or safety wire"
+      ]
+    },
+    {
+      "id": "user-wood-inspection-scarf",
+      "author": "user",
+      "question": "What does it recommend for inspecting and repairing wooden aircraft structures, including splices or scarf joints?",
+      "pages": [
+        47,
+        51,
+        52,
+        53
+      ],
+      "labels": [
+        "1-12",
+        "1-16",
+        "1-17",
+        "1-18"
+      ],
+      "facts": [
+        "the scarf joint is the most satisfactory method of making an end joint",
+        "a spar may be spliced at any point except under the wing attachment fittings"
+      ]
+    },
+    {
+      "id": "user-fabric-inspect-repair",
+      "author": "user",
+      "question": "What procedures does it describe for inspecting, preserving, or repairing fabric-covered aircraft surfaces?",
+      "pages": [
+        106,
+        110,
+        111,
+        112,
+        114
+      ],
+      "labels": [
+        "2-30",
+        "2-34",
+        "2-35",
+        "2-36",
+        "2-38"
+      ],
+      "facts": [
+        "less than 70 percent of the strength of new fabric",
+        "of a quality at least equal to the original materials"
+      ]
+    },
+    {
+      "id": "user-wiring-inspect-repair",
+      "author": "user",
+      "question": "What guidance does it give for inspecting and repairing aircraft electrical wiring and connections?",
+      "pages": [
+        572,
+        623,
+        646
+      ],
+      "labels": [
+        "11-1",
+        "11-52",
+        "11-75"
+      ],
+      "facts": [
+        "subjected to chafing or fraying",
+        "self-insulated splice connector is preferred"
+      ]
+    },
+    {
+      "id": "user-transparent-plastics",
+      "author": "user",
+      "question": "What does it recommend for inspecting and repairing transparent plastic aircraft components, such as windows or windshields?",
+      "pages": [
+        144,
+        147,
+        149,
+        150
+      ],
+      "labels": [
+        "3-26",
+        "3-29",
+        "3-31",
+        "3-32"
+      ],
+      "facts": [
+        "rather than repair extensively damaged transparent plastic",
+        "at the extreme ends of the cracks"
+      ]
     }
   ],
   "off_topic": [
@@ -486,6 +705,34 @@
       "kind": "near_topic",
       "question": "What is the maximum dent depth allowed on a turbine engine compressor blade?",
       "manual_says": "'Compressor blade' does not occur; turbine engines are barely covered."
+    },
+    {
+      "id": "user-carbon-panel-delamination",
+      "kind": "near_topic",
+      "author": "user",
+      "question": "What procedure does it give for repairing a delamination in a specific modern carbon-fiber aircraft panel?",
+      "manual_says": "The fiberglass repairs in chapter 3 (page 3-1) are 'not to be used on radomes or advanced composite components, such as graphite (carbon fiber) or kevlar'. No carbon-fiber panel delamination procedure."
+    },
+    {
+      "id": "user-specific-spar-crack",
+      "kind": "near_topic",
+      "author": "user",
+      "question": "What is the approved repair for a cracked wing spar on a particular aircraft, given its make, model, serial number, and damage location?",
+      "manual_says": "General wood spar splicing (1-40) and replacement (1-41, a major repair); repairs near bolt holes need approval from the manufacturer or the FAA (1-25). Nothing aircraft-specific."
+    },
+    {
+      "id": "user-specific-fastener-torque",
+      "kind": "near_topic",
+      "author": "user",
+      "question": "What exact torque value should be used for a particular fastener in a specific aircraft installation?",
+      "manual_says": "Table 7-1 gives general torque values for when the manufacturer gives none; the value for a specific installation comes from the manufacturer. Borderline: a good answer points to the manufacturer and offers Table 7-1 only as the fallback."
+    },
+    {
+      "id": "user-ad-compliance",
+      "kind": "near_topic",
+      "author": "user",
+      "question": "Does the circular address whether a proposed repair complies with the latest airworthiness directive or other current requirement for a particular aircraft?",
+      "manual_says": "ADs appear only as a source of inspection requirements (5-1), in propeller notes (8-47) and the glossary; the AC does not determine AD compliance for a particular aircraft."
     }
   ]
 }

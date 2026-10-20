@@ -118,6 +118,9 @@ class Verification:
 def _clean(text: str) -> str:
     for glyph, plain in _VULGAR.items():
         text = text.replace(glyph, plain)
+    # "_" -> " ": file-style names ("AC_43.13-1B_CHG_1" on a source line) must
+    # yield the same numbers as the prose form an answer uses ("AC 43.13-1B").
+    text = text.replace("_", " ")
     return text.replace(" ", " ").replace("−", "-").replace("–", "-").replace("—", "-")
 
 

@@ -354,7 +354,7 @@ def near_topic_summary(near: list[dict]) -> dict | None:
     """How many near-topic questions the gate refused anyway (not a target)."""
     if not near:
         return None
-    passed = [r["top_distance"] for r in near if not r["refused"]]
+    passed = [_gate(r) for r in near if not r["refused"]]
     return {
         "total": len(near),
         "gate_refused": sum(r["refused"] for r in near),
@@ -542,7 +542,8 @@ def print_report(
         print()
         print("off-topic questions (must be refused):")
         for r in gate_off:
-            top = f"{r['top_distance']:.3f}" if r["top_distance"] is not None else "-"
+            gate = _gate(r)
+            top = f"{gate:.3f}" if gate is not None else "-"
             print(
                 f"  {r['id']:<26} closest chunk {top}  "
                 f"{'refused' if r['refused'] else 'ANSWERED - gate too loose'}"
@@ -554,7 +555,8 @@ def print_report(
             "not in the sweep below - measure with evals.live_eval):"
         )
         for r in near:
-            top = f"{r['top_distance']:.3f}" if r["top_distance"] is not None else "-"
+            gate = _gate(r)
+            top = f"{gate:.3f}" if gate is not None else "-"
             outcome = "refused" if r["refused"] else "passed (answer check / rule 2)"
             print(f"  {r['id']:<26} closest chunk {top}  {outcome}")
         ns = summary.get("near_topic") or near_topic_summary(near)
