@@ -31,6 +31,10 @@ class OllamaClient:
             recovery_seconds=self.settings.breaker_recovery_seconds,
         )
 
+    @property
+    def model_name(self) -> str:
+        return self.settings.llm_model
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         async def call() -> list[list[float]]:
             response = await self._client.post(

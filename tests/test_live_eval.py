@@ -149,6 +149,8 @@ async def test_the_whole_loop_runs_against_fakes(monkeypatch, tmp_path, capsys):
             pass
 
     class FakeOllama:
+        model_name = "fake-model"
+
         async def chat(self, system, user):
             if user.endswith("REPLY (YES or NO):"):
                 return "YES"
@@ -160,7 +162,7 @@ async def test_the_whole_loop_runs_against_fakes(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(live_eval, "load_golden", lambda: golden)
     monkeypatch.setattr(live_eval, "retrieve", fake_retrieve)
     monkeypatch.setattr(live_eval, "SessionFactory", FakeSession)
-    monkeypatch.setattr(live_eval, "OllamaClient", FakeOllama)
+    monkeypatch.setattr(live_eval, "make_llm_client", FakeOllama)
 
     out = tmp_path / "live.json"
     assert await live_eval.run("hybrid", 0.52, False, None, out) == 0

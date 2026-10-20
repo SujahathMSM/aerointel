@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     embedding_model: str = "embeddinggemma"
     llm_model: str = "qwen3:4b-instruct"
+    # Who writes answers and answer checks: local Ollama (default) or the
+    # Anthropic API (eval slice of M2; passages leave the machine). Embeddings
+    # are always local, so retrieval is identical either way.
+    llm_provider: Literal["ollama", "anthropic"] = "ollama"
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-haiku-5-5"
+    anthropic_base_url: str = "https://api.anthropic.com"
+    # Room for the model's own reasoning as well as the answer: at 1024, 6 of
+    # 52 answers were cut off mid-sentence (2026-10-20).
+    anthropic_max_tokens: int = 4096
     embedding_dimensions: int = 768
 
     # Retrieval / generation

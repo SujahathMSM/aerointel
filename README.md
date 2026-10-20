@@ -12,6 +12,28 @@ nothing in the database is close enough to the question, the model is never even
 called — the refusal is structural, enforced by code, not by asking nicely in a
 prompt.
 
+## Results at a glance
+
+Measured on a real manual, FAA **AC 43.13-1B CHG 1** (756 pages, 1,749 chunks), with a
+golden set of **35 answerable questions** (24 written with the checker, 11 written
+independently by the project owner) and **32 that must not be answered** (3 generic, 6
+outside the manual, 23 *near-topic*: the manual covers the subject in its own words
+but not the figure asked for). Last measured 2026-10-20.
+
+| What | Result |
+|---|---|
+| Right page in the top 5 (hybrid search, 35 questions) | **0.943** recall@5 · MRR 0.867 (original 24: 1.000 · 0.951) |
+| Answer passage reaches the model (original 24, reading limit 0.52) | **24 of 24** |
+| Refused before any model call (distance gate) | 15 of 32 must-not-answer questions |
+| Caught after the gate (answer check), Claude Haiku 5.5 | **17 of 17** — and its answers declined all 17 |
+| Caught after the gate, local Qwen3 4B | 16 of 17 |
+| Figures in answers not found in the cited passage (Haiku) | **0 of 24** answers with numbers |
+
+Near-topic questions are the hard case: 12 of them sit *closer* to the manual than many
+right answers (distance 0.33–0.47), so no distance threshold can separate them. They
+are caught by reading the passages, not by distance. See
+[Answer models compared](#answer-models-compared) for the full table.
+
 ## Status
 
 | Stage / Phase | What it proved | State |
@@ -24,87 +46,107 @@ prompt.
 | Phase 1 — hybrid retrieval + eval | BM25 + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
 | Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic response cache still to do | 🚧 in progress |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
-| Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback) · page-scored eval on a 24-question FAA golden set ✅ · optional "read on" context (next chunk after each hit) ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
+| Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback, paragraph-aware chunking) · page-scored eval on a 35-question FAA golden set ✅ · reading limit past the gate ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
+| Trust layer | Figure check against cited passages ✅ · unknown-word check ✅ · answer check ("do these passages answer it?") ✅ · local or Anthropic model for answers, measured side by side ✅ · warnings, revision awareness still to do | 🚧 in progress |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
 | Phase 6 — observability | Prometheus, Grafana, OpenTelemetry traces, Jaeger, k6 load tests, SLO/error-budget dashboard | not started |
 | Phase 7 — security & hardening | Keycloak OIDC, TLS via mkcert, SOPS-encrypted secrets, audit log, OWASP Top-10 pass | not started |
 
-> **Last verified end-to-end:** 2026-09-14 — 80/80 tests pass (77 non-local +
-> 3 Ollama-required), covering resilience, health/contract, pgvector ranking,
-> hybrid + RRF, cross-encoder reranking, prompt registry, embedding-version
-> tracking, eval metrics + harness, faithfulness (citation validity + judge),
-> and the full grounded-answer + refusal path against real EmbeddingGemma and
-> Qwen3. Ruff, ruff-format, and mypy all clean.
+> **Last verified end-to-end:** 2026-10-20 — the non-local suite passes on the
+> developer machine with real Postgres and Redis (420+ tests; ruff, ruff-format and
+> mypy clean); live evaluations against the manual with local Qwen3 4B, Phi-4-mini,
+> Gemma 3 4B and Claude Haiku 5.5 are saved under `evals/results/`.
 
 > **Full Phase 0 walkthrough:** [docs/PHASE_0.md](docs/PHASE_0.md) — what every
 > file does and why, concept by concept.
 
 ### A note on the data
 
-The database currently holds **6 hand-written synthetic chunks** (hydraulics,
-pressurization, brakes, engine) — see `scripts/load_sample_data.py`. This is
-placeholder content written for this project, explicitly **not** real aircraft
-manual text and **not** airworthiness information. Everything through Phase 1
-is built and measured against this small synthetic set. Real documents can now
-be loaded (see [Document ingestion](#document-ingestion-phase-4)); until a real
-question set exists for them, treat the retrieval numbers as belonging to the
-synthetic set only.
+The live database holds one real, public document: FAA Advisory Circular
+**AC 43.13-1B CHG 1** (*Acceptable Methods, Techniques, and Practices — Aircraft
+Inspection and Repair*), fetched by `scripts/fetch_sample_docs.ps1`. The 6 synthetic
+chunks in `scripts/load_sample_data.py` are placeholder text kept only for the
+original `run_eval` harness and the tests; they are not loaded into the live
+database, so they can never be cited next to the manual. AeroIntel is a reference
+finder that shows its sources, not an airworthiness authority.
 
-## How a request flows (current: Phase 0 + Stage 2)
+## How a request flows
 
-```text
-POST /v1/query {"question": "..."}
-        │
-        ▼
-  embed question (EmbeddingGemma, via Ollama)
-        │
-        ▼
-  pgvector cosine search over document_chunks, top_k closest
-        │
-        ▼
-  distance ≤ MAX_DISTANCE (0.48) ?  ── no ──▶  refuse, LLM never called
-        │ yes
-        ▼
-  build numbered CONTEXT blocks [1] [2] ...
-        │
-        ▼
-  Qwen3 generates, forced to cite blocks like [1] or [2, 3]
-        │
-        ▼
-  QueryResponse { answer, chunks, refused }
+```mermaid
+flowchart TD
+    Q["POST /v1/query<br/>question"] --> E["Embed the question<br/>EmbeddingGemma, local"]
+    E --> H["Hybrid search<br/>pgvector + BM25 keywords, fused by RRF, top 5"]
+    H --> G{"Closest chunk within<br/>MAX_DISTANCE 0.48?"}
+    G -- no --> R1["Refuse: too_far<br/>the model is never called"]
+    G -- yes --> C["Reading limit<br/>the model reads every chunk within 0.52"]
+    C --> W["Unknown-word check<br/>names question words no chunk contains"]
+    W --> A{"Answer check<br/>do these passages answer it?"}
+    A -- "NO, refuse mode" --> R2["Refuse: not_in_context"]
+    A -- "YES, or flag mode" --> L["Answer from the numbered passages only<br/>Qwen3 4B local, or Claude Haiku via API"]
+    L --> V["Figure check<br/>every number vs the passages it cites"]
+    V --> OUT["Response<br/>answer, citations with printed page,<br/>verification, answer_check, unknown_terms"]
 ```
 
-Every Ollama call (`embed` and `chat`) is wrapped in timeout → retry-with-backoff
-→ circuit-breaker, so a slow or dead Ollama fails fast and predictably instead of
-hanging the whole API.
+Two decisions are kept apart on purpose. **Answer at all?** is decided in code by the
+closest chunk's distance (structural refusal: the model cannot talk its way past it).
+**Read what?** is every retrieved chunk up to a slightly looser reading limit, so an
+answer passage ranked just past the gate is not lost. The answer check and the figure
+check then judge the passages and the answer, not the topic.
+
+Every model call goes through timeout → retry with backoff → circuit breaker, so a
+slow or dead model fails fast instead of hanging the API.
+
+### How a document gets in
+
+```mermaid
+flowchart LR
+    P["PDF<br/>POST /v1/documents<br/>or scripts/ingest_pdfs.py"] --> D{"SHA-256<br/>seen before?"}
+    D -- yes --> X["No-op<br/>return the stored document"]
+    D -- no --> T["Text page by page<br/>OCR when a page has no text layer"]
+    T --> S["Strip repeated headers and footers<br/>read the printed page label, e.g. 7-39"]
+    S --> K["Chunk by sentence, never across a page<br/>new chunk at each numbered paragraph"]
+    K --> M["Embed in batches<br/>EmbeddingGemma, 768 dimensions"]
+    M --> DB[("Postgres + pgvector<br/>one transaction per document")]
+```
+
+### How quality is measured
+
+```mermaid
+flowchart LR
+    GS["evals/golden_faa.json<br/>35 answerable · 32 must not answer<br/>pages + key facts per question"] --> DE["doc_eval<br/>retrieval only, no model:<br/>recall, MRR, facts reaching the model, gate sweep"]
+    GS --> LE["live_eval<br/>real model: answer check,<br/>written answers, figure check"]
+    DE --> RES["evals/results/*.json"]
+    LE --> RES
+    RES --> DEC{"Anything worse?"}
+    DEC -- no --> KEEP["Keep the change"]
+    DEC -- yes --> REV["Revert or rework"]
+```
+
+Every change to chunking, retrieval, prompts or models in this repository went through
+this loop, and several were rejected by it (top_k 8, a cross-encoder reranker, two
+prompt rewrites — see `evals/results/` and the commit history).
 
 ## Architecture
 
-```text
-client
-  │  HTTP
-  ▼
-RequestIdMiddleware        stamps + logs a request ID on every request (plain ASGI)
-  │
-  ▼
-FastAPI router              /auth/token
-                             /v1/query  /v1/search  /v1/ingest  (token + scope + rate limit)
-                             /health/live  /health/ready
-  │
-  ▼
-services/                   retrieval.py · generation.py · ingestion.py
-  │                         (the RAG logic — no HTTP concerns)
-  ├──────────────┬──────────────────────
-  ▼              ▼
-db/              llm/
-SQLAlchemy       OllamaClient
-2.0 async,       timeout + retry + circuit breaker,
-Alembic          wraps embed() and chat()
-  │              │
-  ▼              ▼
-Postgres         Ollama
-(pgvector)       (Qwen3, EmbeddingGemma — runs on the host)
+```mermaid
+flowchart TB
+    client["Client"] --> mw["Request-ID middleware<br/>JSON logs per request"]
+    mw --> api["FastAPI routers<br/>/auth/token · /v1/query · /v1/query/stream<br/>/v1/search · /v1/ingest · /v1/documents · /health"]
+    api --> auth["JWT auth + scopes"]
+    api --> rl["Rate limit<br/>token bucket, Lua"]
+    api --> idem["Idempotency keys"]
+    rl --> redis[("Redis")]
+    idem --> redis
+    api --> svc["services/<br/>retrieval · hybrid · generation<br/>verification · answerability · documents"]
+    svc --> db[("Postgres 18 + pgvector<br/>documents · chunks · tsvector")]
+    svc --> llm["llm/<br/>timeout · retry · circuit breaker"]
+    llm --> ollama["Ollama on the host<br/>EmbeddingGemma · Qwen3 4B"]
+    llm -. "LLM_PROVIDER=anthropic" .-> claude["Anthropic API<br/>Claude Haiku 5.5<br/>answers and checks only"]
 ```
+
+Embeddings always stay local; with `LLM_PROVIDER=anthropic` only the answer and the
+answer check go to the API (passages leave the machine, so use it only for documents
+that may).
 
 `core/` holds the cross-cutting pieces: `config.py` (typed settings from env/`.env`,
 no defaults for secrets), `logging.py` (structlog JSON + request-ID middleware),
@@ -141,6 +183,7 @@ app/
     models.py              Document, DocumentChunk (pgvector column, JSONB metadata, page)
   llm/
     ollama.py              OllamaClient: embed() + chat(), resilience-wrapped
+    anthropic.py           answers + checks via the Anthropic API (LLM_PROVIDER=anthropic); embeddings stay local
   schemas/                 pydantic request/response contracts
   services/
     retrieval.py            search_chunks() — embed + pgvector search
@@ -746,8 +789,8 @@ What it showed:
   previous cut, mostly section titles), 15 chunks add under 200 new characters
   (short paragraphs at the end of a page), the titanium paragraph is one 798-char
   chunk, and every golden fact still lies whole in one chunk on its page
-  (36 of 36). 1,749 chunks instead of 1,589. Whether it helps retrieval needs a
-  live re-ingest and `doc_eval` run.
+  (36 of 36). 1,749 chunks instead of 1,589. Measured live: titanium fixed; combined with the
+  reading limit (`CONTEXT_MAX_DISTANCE=0.52`) all 24 answer passages reach the model.
 - **`MAX_DISTANCE` has no clean setting.** Every right answer is within 0.479, but
   two aviation questions the manual cannot answer were answered at 0.48 (a carbon
   fiber propeller at 0.439 and a helicopter rotor bolt at 0.468) and the other six
@@ -760,6 +803,50 @@ What it showed:
 
 `HYBRID_ENABLED` and `MAX_DISTANCE` are passed through `docker-compose.yml`, so
 set them in `.env` and run `docker compose up -d`.
+
+### Answer models compared
+
+Same retrieval, same prompts (`grounded_answer v1`, `answer_check v2`), same 67
+questions; only the model that reads the passages changes. Embeddings stay local in
+every run. Results files are in `evals/results/`.
+
+**The answer check** (`live_eval --check-only`: one YES/NO call per question that
+passes the gate; 2026-10-20):
+
+| Model | Runs on | Must-not-answer caught (of 17 past the gate) | Right questions wrongly refused (of 35) | Time |
+|---|---|---|---|---|
+| **Claude Haiku 5.5** | Anthropic API | **17** | 3 (NDI, drilling, wood) | 233 s* |
+| **Qwen3 4B instruct** | local, 4 GB GPU | 16 (misses the torque question) | **2** (NDI, drilling) | 68 s |
+| Phi-4-mini 3.8B | local | 17 | 9 — says NO to simple questions too | 64 s |
+| Gemma 3 4B | local | 11 — lets 6 near-topic questions through | 2 | 124 s |
+
+\* full run including written answers; the others are check-only.
+
+**Written answers** (full `live_eval`, read by hand as well as counted):
+
+| | Qwen3 4B (local) | Claude Haiku 5.5, run 1 | Claude Haiku 5.5, run 2 |
+|---|---|---|---|
+| Must-not-answer questions whose answer declines | 16 of 17 | 15 of 17 | **17 of 17** |
+| The torque trap ("exact torque for a particular fastener") | quotes a general Table 7-1 value as the answer | correct: names Table 7-1 only as the fallback | declines correctly |
+| Figures not found in the cited passage | 1 of 21 (a false alarm, since fixed) | 1 of 25 (from a cut-off answer) | **0 of 24** |
+| Answers cut off by the output limit | 0 | 6 (limit was 1,024 tokens) | 0 (limit 4,096, cut answers now marked) |
+| Broad, multi-part questions | often declines when the passages cover only part | answers the covered part, says what is not covered | same |
+| Time, 67 questions | 397 s | 234 s | 233 s |
+
+What it means:
+
+- **The refusal design holds with every model.** 15 of 32 must-not-answer questions
+  never reach a model at all; the rest are caught by reading the passages.
+- **Answer quality is mostly the model.** On broad and tricky questions the 4B local
+  model either declines or overreaches; Haiku answers what the passages support and
+  says what they do not. Retrieval misses (one broad NDI question) stay misses with
+  either model.
+- **Pick by constraint.** Fully offline and private: Qwen3 4B, with the answer check in
+  `refuse` mode. Best answers: Claude Haiku with the check in `flag` mode (its check is
+  stricter on broad questions, and its own answers already decline 17 of 17).
+- **Run** a model by name: `$env:LLM_MODEL="phi4-mini"` (Ollama) or
+  `$env:LLM_PROVIDER="anthropic"` (needs `ANTHROPIC_API_KEY` in `.env`), then
+  `python -m evals.live_eval --retriever hybrid --context-max-distance 0.52`.
 
 ## Stop / reset
 

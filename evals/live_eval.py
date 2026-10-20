@@ -35,7 +35,7 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.db.base import SessionFactory
-from app.llm.ollama import OllamaClient
+from app.llm.anthropic import make_llm_client
 from app.services.generation import (
     CHECK_NO,
     answer_check_system,
@@ -182,7 +182,7 @@ async def run(
     golden = load_golden()
     source = golden["source"]
     settings = get_settings()
-    ollama = OllamaClient()
+    ollama = make_llm_client()
     system = system_prompt()
     right: list[dict] = []
     off_topic: list[dict] = []
@@ -256,7 +256,7 @@ async def run(
     label = (
         f"retriever={retriever}  max_distance={settings.max_distance}  "
         f"context_max_distance={context_max_distance}  top_k={settings.top_k}  "
-        f"model={settings.llm_model}  prompt={system.label}  "
+        f"model={ollama.model_name}  prompt={system.label}  "
         f"check={answer_check_system(check_version).label}  "
         f"{time.monotonic() - started:.0f}s"
     )
