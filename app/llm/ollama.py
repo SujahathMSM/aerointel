@@ -17,6 +17,35 @@ _EMBED_RETRYABLE = (httpx.TransportError,)
 _CHAT_RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout)
 
 
+class StreamTrimmer:
+    """Trim a streamed answer the way `chat()` strips a whole one.
+
+    Leading whitespace is dropped; trailing whitespace is held back until more
+    text follows it, so the pieces joined together equal `text.strip()`. Shared
+    by every provider's `chat_stream()`.
+    """
+
+    def __init__(self) -> None:
+        self._started = False  # have we emitted any non-whitespace yet?
+        self._pending = ""  # whitespace held back until we know more follows
+
+    def feed(self, piece: str) -> str:
+        """The part of `piece` that can be emitted now ("" = nothing yet)."""
+        buffered = self._pending + piece
+        body = buffered.rstrip()
+        self._pending = buffered[len(body) :]
+        if not self._started:
+            body = body.lstrip()
+            self._pending = self._pending if body else ""
+        if body:
+            self._started = True
+        return body
+
+    @property
+    def started(self) -> bool:
+        return self._started
+
+
 class OllamaClient:
     """Async Ollama client: timeout + retry + circuit breaker built in."""
 
@@ -142,8 +171,7 @@ class OllamaClient:
             )
         )
 
-        started = False  # have we emitted any non-whitespace yet?
-        pending = ""  # whitespace held back until we know more text follows
+        trimmer = StreamTrimmer()
         try:
             async for line in response.aiter_lines():
                 if not line.strip():
@@ -153,14 +181,8 @@ class OllamaClient:
                     raise RuntimeError(
                         f"Ollama chat failed mid-stream: {data['error']}"
                     )
-                buffered = pending + data.get("message", {}).get("content", "")
-                body = buffered.rstrip()
-                pending = buffered[len(body) :]
-                if not started:
-                    body = body.lstrip()
-                    pending = pending if body else ""
+                body = trimmer.feed(data.get("message", {}).get("content", ""))
                 if body:
-                    started = True
                     yield body
                 if data.get("done"):
                     break

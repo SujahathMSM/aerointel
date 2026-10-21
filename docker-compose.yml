@@ -74,6 +74,12 @@ services:
       ANSWER_CHECK: ${ANSWER_CHECK:-off}
       ANSWER_CHECK_VERSION: ${ANSWER_CHECK_VERSION:-v2}
       PROMPT_VERSION: ${PROMPT_VERSION:-v1}
+      # Who writes answers and runs the answer check: ollama (local) or anthropic
+      # (passages leave the machine). Embeddings always stay on local Ollama.
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-5-5}
+      ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:-4096}
 
     ports:
       - "8000:8000"

@@ -3,6 +3,8 @@
 No network: httpx.MockTransport stands in for the API.
 """
 
+import json
+
 import httpx
 import pytest
 
@@ -122,3 +124,126 @@ async def test_a_cut_off_answer_is_marked_not_passed_off_as_complete():
 
 def test_the_output_limit_leaves_room_for_reasoning():
     assert get_settings().anthropic_max_tokens >= 4096
+
+
+# ----------------------------------------------------------------- streaming
+
+
+def _sse(*events: dict) -> bytes:
+    """An Anthropic Messages stream: `event:` name, `data:` JSON, blank line."""
+    out = []
+    for event in events:
+        out.append(f"event: {event['type']}\ndata: {json.dumps(event)}\n\n")
+    return "".join(out).encode()
+
+
+def _text(piece: str) -> dict:
+    return {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {"type": "text_delta", "text": piece},
+    }
+
+
+def _stop(reason: str = "end_turn") -> list[dict]:
+    return [
+        {"type": "message_delta", "delta": {"stop_reason": reason}},
+        {"type": "message_stop"},
+    ]
+
+
+async def _collect(client) -> list[str]:
+    return [piece async for piece in client.chat_stream("SYSTEM", "USER")]
+
+
+async def test_stream_yields_text_and_joins_to_what_chat_returns():
+    seen = {}
+    stream = _sse(
+        {"type": "message_start", "message": {"id": "m1"}},
+        {"type": "ping"},
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": "not shown"},
+        },
+        _text("  Use "),
+        _text(".032 wire"),
+        _text(" [1].  "),
+        *_stop(),
+    )
+
+    def handler(request):
+        seen["body"] = json.loads(request.read())
+        return httpx.Response(200, content=stream)
+
+    client = _client(handler)
+    pieces = await _collect(client)
+    await client.close()
+
+    assert "".join(pieces) == "Use .032 wire [1]."
+    assert all(pieces)  # no empty pieces reach the SSE relay
+    assert seen["body"]["stream"] is True
+    assert seen["body"]["system"] == "SYSTEM"
+    assert "temperature" not in seen["body"]
+
+
+async def test_stream_cut_off_at_the_limit_ends_with_the_note():
+    stream = _sse(_text("within conduits [3"), *_stop("max_tokens"))
+    client = _client(lambda request: httpx.Response(200, content=stream))
+    text = "".join(await _collect(client))
+    await client.close()
+    assert text == f"within conduits [3\n\n{anthropic_module.TRUNCATED_NOTE}"
+
+
+async def test_stream_retries_overloaded_before_any_text(monkeypatch):
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr("app.core.resilience.asyncio.sleep", no_sleep, raising=False)
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) < 2:
+            return httpx.Response(529, json={"error": {"type": "overloaded_error"}})
+        return httpx.Response(200, content=_sse(_text("YES"), *_stop()))
+
+    client = _client(handler)
+    assert "".join(await _collect(client)) == "YES"
+    await client.close()
+    assert len(calls) == 2
+
+
+async def test_stream_bad_request_fails_at_once_with_the_reason():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(400, json={"error": {"message": "model not found"}})
+
+    client = _client(handler)
+    with pytest.raises(RuntimeError, match="model not found"):
+        await _collect(client)
+    await client.close()
+    assert len(calls) == 1
+
+
+async def test_stream_error_after_text_is_raised_not_retried():
+    calls = []
+    stream = _sse(
+        _text("Torque to "),
+        {"type": "error", "error": {"type": "overloaded_error", "message": "busy"}},
+    )
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(200, content=stream)
+
+    client = _client(handler)
+    got: list[str] = []
+    with pytest.raises(RuntimeError, match="mid-stream: overloaded_error: busy"):
+        async for piece in client.chat_stream("s", "u"):
+            got.append(piece)
+    await client.close()
+    assert got == ["Torque to"]
+    assert len(calls) == 1  # a retry would have repeated "Torque to"

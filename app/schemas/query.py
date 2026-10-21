@@ -41,6 +41,9 @@ class QueryResponse(BaseModel):
     # Which prompt version produced the answer; None on a refusal, where no
     # prompt was used because the model was never called.
     prompt_version: str | None = None
+    # Which model wrote the answer (e.g. "qwen3:4b-instruct", "claude-haiku-5-5");
+    # None on a refusal, where no answer was written.
+    model: str | None = None
     # Why a refusal happened: "too_far" (nothing close enough), "unknown_terms"
     # (a word in the question appears in no stored chunk), "not_in_context" (the
     # answer check judged that the passages do not answer it) or

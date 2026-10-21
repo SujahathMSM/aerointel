@@ -146,7 +146,9 @@ flowchart TB
 
 Embeddings always stay local; with `LLM_PROVIDER=anthropic` only the answer and the
 answer check go to the API (passages leave the machine, so use it only for documents
-that may).
+that may). The setting applies to the API (`/v1/query` and `/v1/query/stream`) and to
+the evals alike, through one factory (`app/llm/anthropic.py:make_llm_client`), and
+every answer names the model that wrote it in its `model` field.
 
 `core/` holds the cross-cutting pieces: `config.py` (typed settings from env/`.env`,
 no defaults for secrets), `logging.py` (structlog JSON + request-ID middleware),
@@ -879,6 +881,9 @@ What it means:
 - **Run** a model by name: `$env:LLM_MODEL="phi4-mini"` (Ollama) or
   `$env:LLM_PROVIDER="anthropic"` (needs `ANTHROPIC_API_KEY` in `.env`), then
   `python -m evals.live_eval --retriever hybrid --context-max-distance 0.52`.
+- **Serve** with Claude: set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` in `.env`,
+  then `docker compose up -d --build api`. The API refuses to start if the key is
+  missing, and logs `llm client ready` with the provider and model when it starts.
 
 ## Stop / reset
 

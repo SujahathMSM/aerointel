@@ -18,7 +18,11 @@ logger = get_logger(__name__)
 
 
 def get_ollama(request: Request) -> OllamaClient:
-    """The shared OllamaClient lives on app.state (created at startup)."""
+    """The shared model client on app.state (created at startup).
+
+    Always embeds through local Ollama; `chat()` / `chat_stream()` go to the
+    LLM_PROVIDER model (an `AnthropicChatClient` is an `OllamaClient` subclass).
+    """
     return request.app.state.ollama
 
 

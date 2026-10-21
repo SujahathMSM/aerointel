@@ -81,7 +81,12 @@ default:
 
 Layering: `api/v1/router.py` (HTTP) -> `services/*.py` (RAG logic, no HTTP
 concerns) -> `db/` (async SQLAlchemy 2.0 + pgvector) and `llm/ollama.py`
-(`OllamaClient`, wraps `embed()`/`chat()`). Every Ollama call goes through
+(`OllamaClient`, wraps `embed()`/`chat()`/`chat_stream()`). The API and the evals
+both get their client from `llm/anthropic.py:make_llm_client()`: with
+`LLM_PROVIDER=anthropic` an `AnthropicChatClient` (an `OllamaClient` subclass) sends
+`chat()`/`chat_stream()` to Claude while `embed()` stays on local Ollama. Never build
+`OllamaClient()` directly in app code, or the setting stops reaching the API (it did,
+until 2026-10-21). Every Ollama call goes through
 `app/core/resilience.py` (timeout -> retry-with-backoff -> circuit breaker), so
 a slow/dead Ollama fails fast instead of hanging the API. `app/core/config.py`
 holds typed `Settings` from env/`.env` with no defaults for secrets;

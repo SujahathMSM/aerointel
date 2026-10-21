@@ -95,6 +95,11 @@ def _refusal_text(reason, unknown_terms, verification) -> str:
     return refusal_message(reason, unknown_terms, figures, get_settings().max_distance)
 
 
+def _model_name(llm) -> str | None:
+    """The answering model's name, for the response and the logs."""
+    return getattr(llm, "model_name", None)
+
+
 def _to_retrieved(chunk, distance: float) -> RetrievedChunk:
     return RetrievedChunk(
         id=chunk.id,
@@ -135,6 +140,7 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
 
     logger.info(
         "query answered",
+        model=_model_name(ollama),
         chunks_used=len(result.chunks),
         answer_chars=len(result.answer or ""),
         prompt_version=result.prompt_version,
@@ -145,6 +151,7 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
         answer=result.answer,
         chunks=[_to_retrieved(c, d) for c, d in result.chunks],
         prompt_version=result.prompt_version,
+        model=_model_name(ollama),
         unknown_terms=result.unknown_terms,
         verification=_verification_out(result.verification),
         answer_check=result.answer_check,
@@ -165,7 +172,7 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
 
     - `meta`  -- question, refused, refusal_reason, refusal_message,
                  unknown_terms, answer_check, chunks (the sources),
-                 prompt_version. Always first.
+                 prompt_version, model (who writes the answer). Always first.
     - `token` -- `{"text": "..."}`, repeated; concatenate to build the answer.
     - `verification` -- only when the answer contained figures or citations to
                  check: the same object as `/v1/query`'s `verification`. The text
@@ -195,6 +202,7 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
         unknown_terms=prepared.unknown_terms,
         chunks=[_to_retrieved(c, d) for c, d in prepared.chunks],
         prompt_version=prepared.prompt_version,
+        model=None if prepared.refused else _model_name(ollama),
         answer_check=prepared.answer_check,
     ).model_dump(exclude={"answer", "verification"})
 
