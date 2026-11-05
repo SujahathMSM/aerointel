@@ -352,7 +352,8 @@ is safe:
    questions' embeddings must have cosine similarity ≥
    `ANSWER_CACHE_MIN_SIMILARITY` (a repeated question always matches), **and**
    they must agree on the words embeddings blur: numbers and identifiers
-   (`10-32` vs `1/4-28`, `AN960` vs `AN970`), negations (`not`, `never`,
+   (`10-32` vs `1/4-28`, `AN960` vs `AN970`, also spelled out: "quarter-inch"
+   vs "three-eighths-inch"), negations (`not`, `never`,
    `without`), and limits/directions (`minimum`/`maximum`, `before`/`after`,
    `install`/`remove`, …). "Torque for a 10-32 bolt" never reuses the answer
    for a 1/4-28 bolt, even though both retrieve the same torque table.
@@ -394,7 +395,10 @@ It embeds each pair with the real model, applies the guard words, runs both
 questions through `prepare_answer()` to see whether they would share a bucket,
 and prints right reuses and **wrong reuses** at each threshold, plus the lowest
 threshold with no wrong reuse (plus 0.01). Wrong reuses must be 0 at the
-configured value. CI checks the pair file and the guard-word expectations
+configured value. It also says how each pair's passages differ (identical, same
+passages in another order, partly shared, none shared) and repeats the table
+"if reordered", i.e. as if a cached answer's `[n]` citations were renumbered to
+fit the same passages in another order. CI checks the pair file and the guard-word expectations
 written in it (`tests/test_cache_eval.py`) without a model.
 
 ### Streaming answers (Phase 2)

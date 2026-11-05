@@ -244,7 +244,7 @@
       "label": "different",
       "a": "What torque should a quarter-inch fine thread bolt get when the manufacturer gives none?",
       "b": "What torque should a three-eighths-inch fine thread bolt get when the manufacturer gives none?",
-      "note": "sizes spelled in words, so no digit for the guard: only the threshold can catch it"
+      "note": "sizes spelled in words: the guard should catch it (number words; measured 0.96 similar with the same passages before it did)"
     }
   ]
 }

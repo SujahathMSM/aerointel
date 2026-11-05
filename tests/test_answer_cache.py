@@ -157,6 +157,15 @@ def test_numbers_and_identifiers_are_guard_words():
     assert "0.032" in question_guard("Is 0.032 in. sheet enough?")
 
 
+def test_numbers_spelled_as_words_are_guard_words():
+    assert question_guard("torque for a quarter-inch bolt") != question_guard(
+        "torque for a three-eighths-inch bolt"
+    )
+    assert question_guard("two rows of rivets") == question_guard("2 rows of rivets")
+    assert question_guard("three eighths") == question_guard("three-eighths")
+    assert question_guard("one third") != question_guard("one fourth")
+
+
 def test_negations_and_limits_are_guard_words():
     assert question_guard("Should I prime it?") != question_guard(
         "Should I not prime it?"

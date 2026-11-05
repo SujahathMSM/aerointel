@@ -14,8 +14,9 @@ cheap. So the cache replaces only that one call, and only when it is safe to:
      land in a new bucket. Nothing has to be flushed; stale buckets expire.
   3. Within the bucket, the questions mean the same thing: cosine similarity
      of their embeddings is at least `min_similarity`, and they agree on the
-     words embeddings blur -- numbers and identifiers ("10-32" vs "1/4-28"),
-     negations ("not"), and limits/directions ("minimum" vs "maximum").
+     words embeddings blur -- numbers and identifiers ("10-32" vs "1/4-28",
+     also spelled out: "quarter-inch"), negations ("not"), and
+     limits/directions ("minimum" vs "maximum").
 
 How a bucket is stored: one Redis list per bucket, newest entry first, capped
 at `max_entries` and expiring after the TTL. A lookup reads the (short) list
@@ -52,6 +53,62 @@ _DIGIT_TOKEN = re.compile(r"[a-z]*\d[a-z0-9./-]*")
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
 
 _NEGATIONS = frozenset({"not", "no", "never", "without", "except", "cannot", "nor"})
+
+# Numbers written as words are numbers too: "a quarter-inch bolt" and "a
+# three-eighths-inch bolt" retrieve the same torque table at similarity 0.96
+# (evals.cache_eval). Cardinals become digits, so "two" matches "2"; fraction
+# words keep one singular form ("three-eighths" -> "3" + "eighth").
+_CARDINALS = {
+    word: str(value)
+    for value, word in enumerate(
+        [
+            "zero",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+            "thirteen",
+            "fourteen",
+            "fifteen",
+            "sixteen",
+            "seventeen",
+            "eighteen",
+            "nineteen",
+            "twenty",
+        ]
+    )
+} | {
+    "thirty": "30",
+    "forty": "40",
+    "fifty": "50",
+    "sixty": "60",
+    "seventy": "70",
+    "eighty": "80",
+    "ninety": "90",
+}
+_FRACTION_FORMS = {
+    "half": ("half", "halves"),
+    "third": ("third", "thirds"),
+    "quarter": ("quarter", "quarters", "fourth", "fourths"),
+    "fifth": ("fifth", "fifths"),
+    "sixth": ("sixth", "sixths"),
+    "eighth": ("eighth", "eighths"),
+    "tenth": ("tenth", "tenths"),
+    "sixteenth": ("sixteenth", "sixteenths"),
+    "hundred": ("hundred", "hundreds", "hundredth", "hundredths"),
+    "thousand": ("thousand", "thousands", "thousandth", "thousandths"),
+}
+_NUMBER_WORDS = _CARDINALS | {
+    form: base for base, forms in _FRACTION_FORMS.items() for form in forms
+}
 
 # Words that flip a maintenance answer while barely moving the embedding, each
 # mapped to one base form so "installed" and "installation" count as "install".
@@ -111,6 +168,8 @@ def question_guard(question: str) -> tuple[str, ...]:
             guard.add("not" if word == "cannot" else word)
         elif word in _QUALIFIERS:
             guard.add(_QUALIFIERS[word])
+        elif word in _NUMBER_WORDS:
+            guard.add(_NUMBER_WORDS[word])
     return tuple(sorted(guard))
 
 

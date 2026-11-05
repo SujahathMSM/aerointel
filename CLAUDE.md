@@ -120,8 +120,8 @@ Entries are bucketed by `generation.cache_bucket()` — a hash of the exact cont
 text and order, system prompt, model, temperature, `num_ctx` and embedding model —
 so a corpus/prompt/model change is a new bucket, not a stale hit. Within a bucket a
 hit needs cosine similarity >= `ANSWER_CACHE_MIN_SIMILARITY` *and* the same guard
-words (`question_guard()`: numbers/identifiers, negations, min/max-type
-qualifiers). The figure check re-runs on a hit; a flagged answer is never stored.
+words (`question_guard()`: numbers/identifiers, also spelled out, negations,
+min/max-type qualifiers). The figure check re-runs on a hit; a flagged answer is never stored.
 Fails open on Redis errors (miss/skip + circuit breaker). Choose the threshold with
 `evals.cache_eval` (`evals/cache_pairs.json`); wrong reuses must be 0. With the cache on,
 `prepare_answer()` embeds the question once and passes `query_embedding` down to

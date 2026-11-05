@@ -16,6 +16,12 @@ bucket. Then, for each threshold, it counts:
 
 and recommends the lowest threshold with no wrong reuse, plus a margin.
 
+It also says *why* two questions' contexts differ: the same passages in another
+order ("order"), some passages shared ("partial") or none ("disjoint"). The
+cache needs identical order, because a cached answer's [n] citations point at
+positions. The "if reordered" columns show what renumbering those citations
+would buy: hits counted as if same-passages-other-order were allowed.
+
     python -m evals.cache_eval                     # needs Ollama + Postgres with the manual
     python -m evals.cache_eval --no-retrieval      # Ollama only; assumes every pair
                                                    # shares its context (worst case)
@@ -56,31 +62,54 @@ def load_pairs(path: Path = PAIRS_PATH) -> list[dict]:
     return pairs
 
 
-def would_hit(row: dict, threshold: float) -> bool:
-    """Would the cache hand B the answer written for A, at this threshold?"""
-    if row["refused"] or row["same_context"] is False or not row["guard_equal"]:
+def context_difference(ids_a: list[int], ids_b: list[int]) -> str:
+    """How two questions' context chunks differ: same, order, partial, disjoint."""
+    if ids_a == ids_b:
+        return "same"
+    if sorted(ids_a) == sorted(ids_b):
+        return "order"
+    if set(ids_a) & set(ids_b):
+        return "partial"
+    return "disjoint"
+
+
+def _shares_context(row: dict, reorder: bool) -> bool:
+    if row["same_context"] is not False:  # identical, or not checked (worst case)
+        return True
+    return reorder and row.get("context") == "order"
+
+
+def would_hit(row: dict, threshold: float, reorder: bool = False) -> bool:
+    """Would the cache hand B the answer written for A, at this threshold?
+
+    reorder: also count the same passages in another order as shared (what
+    renumbering the cached answer's citations would allow).
+    """
+    if row["refused"] or not row["guard_equal"] or not _shares_context(row, reorder):
         return False
     return row["exact"] or row["similarity"] >= threshold
 
 
-def sweep(rows: list[dict], thresholds: list[float]) -> list[dict]:
+def sweep(
+    rows: list[dict], thresholds: list[float], reorder: bool = False
+) -> list[dict]:
     """Right and wrong reuses at each threshold (pure, so it is unit-tested)."""
     same = [r for r in rows if r["label"] == "same" and not r["refused"]]
     different = [r for r in rows if r["label"] == "different" and not r["refused"]]
     return [
         {
             "threshold": t,
-            "right_reuses": sum(would_hit(r, t) for r in same),
+            "right_reuses": sum(would_hit(r, t, reorder) for r in same),
             "same_total": len(same),
-            "wrong_reuses": sum(would_hit(r, t) for r in different),
-            "wrong_ids": [r["id"] for r in different if would_hit(r, t)],
+            "wrong_reuses": sum(would_hit(r, t, reorder) for r in different),
+            "wrong_ids": [r["id"] for r in different if would_hit(r, t, reorder)],
             "different_total": len(different),
         }
         for t in thresholds
     ]
 
 
-def safe_threshold(rows: list[dict]) -> float | None:
+def safe_threshold(rows: list[dict], reorder: bool = False) -> float | None:
     """Lowest threshold (plus MARGIN) at which no "different" pair would hit.
 
     None when even 1.0 is not safe: a "different" pair that matches exactly or
@@ -91,7 +120,7 @@ def safe_threshold(rows: list[dict]) -> float | None:
         for r in rows
         if r["label"] == "different"
         and not r["refused"]
-        and r["same_context"] is not False
+        and _shares_context(r, reorder)
         and r["guard_equal"]
     ]
     if any(r["exact"] or r["similarity"] >= 1.0 for r in exposed):
@@ -100,17 +129,27 @@ def safe_threshold(rows: list[dict]) -> float | None:
     return min(1.0, round(highest + MARGIN, 3))
 
 
+def _context_counts(rows: list[dict]) -> dict[str, int]:
+    kinds = ["same", "order", "partial", "disjoint"]
+    return {k: sum(r.get("context") == k for r in rows) for k in kinds}
+
+
 def summarise(rows: list[dict], configured: float) -> dict:
     thresholds = sorted({*GRID, configured})
+    same = [r for r in rows if r["label"] == "same" and not r["refused"]]
     different = [r for r in rows if r["label"] == "different" and not r["refused"]]
     return {
         "pairs": len(rows),
         "refused": sum(r["refused"] for r in rows),
         "different_caught_by_guard": sum(not r["guard_equal"] for r in different),
         "different_other_context": sum(r["same_context"] is False for r in different),
+        "context_of_same": _context_counts(same),
+        "context_of_different": _context_counts(different),
         "safe_threshold": safe_threshold(rows),
+        "safe_threshold_if_reordered": safe_threshold(rows, reorder=True),
         "configured_threshold": configured,
         "sweep": sweep(rows, thresholds),
+        "sweep_if_reordered": sweep(rows, thresholds, reorder=True),
     }
 
 
@@ -118,7 +157,9 @@ def _why(row: dict) -> str:
     if row["refused"]:
         return "refused"
     if row["same_context"] is False:
-        return "other context"
+        return {"order": "passage order"}.get(
+            row.get("context") or "", "other passages"
+        )
     if not row["guard_equal"]:
         return "guard"
     if row["exact"]:
@@ -126,45 +167,62 @@ def _why(row: dict) -> str:
     return ""
 
 
+def _cell(s: dict, key: str, total: str) -> str:
+    return f"{s[key]}/{s[total]}"
+
+
+def _safe_line(safe: float | None, what: str) -> str:
+    if safe is None:
+        return f"{what}: none is safe (a 'different' pair matches exactly; add a guard word)"
+    return f"{what}: {safe}"
+
+
 def print_report(rows: list[dict], summary: dict) -> None:
     print()
     print(f"{'pair':<38} {'label':>9} {'similarity':>10}  blocked by")
-    print("-" * 74)
+    print("-" * 78)
     for r in sorted(rows, key=lambda r: (r["label"], -r["similarity"])):
         print(f"{r['id']:<38} {r['label']:>9} {r['similarity']:>10.4f}  {_why(r)}")
-    print("-" * 74)
-    print(f"{'threshold':>9} {'right reuses':>14} {'wrong reuses':>14}")
-    for s in summary["sweep"]:
+    print("-" * 78)
+    print(f"{'':>9} {'as built':>27}   {'if reordered':>27}")
+    print(f"{'threshold':>9} {'right':>13} {'wrong':>13}   {'right':>13} {'wrong':>13}")
+    for s, r in zip(summary["sweep"], summary["sweep_if_reordered"], strict=True):
         mark = (
             "  <- configured"
             if s["threshold"] == summary["configured_threshold"]
             else ""
         )
-        wrong = f"{s['wrong_reuses']}/{s['different_total']}"
         print(
-            f"{s['threshold']:>9.2f} {s['right_reuses']:>9}/{s['same_total']:<4} "
-            f"{wrong:>14}{mark}"
+            f"{s['threshold']:>9.2f} "
+            f"{_cell(s, 'right_reuses', 'same_total'):>13} "
+            f"{_cell(s, 'wrong_reuses', 'different_total'):>13}   "
+            f"{_cell(r, 'right_reuses', 'same_total'):>13} "
+            f"{_cell(r, 'wrong_reuses', 'different_total'):>13}{mark}"
         )
-        if s["wrong_ids"]:
-            print(f"{'':>10}wrong: {', '.join(s['wrong_ids'])}")
-    print("-" * 74)
+        wrong = sorted({*s["wrong_ids"], *r["wrong_ids"]})
+        if wrong:
+            print(f"{'':>10}wrong: {', '.join(wrong)}")
+    print("-" * 78)
+    for label in ("same", "different"):
+        c = summary[f"context_of_{label}"]
+        print(
+            f"'{label}' pairs' passages: identical {c['same']}, other order "
+            f"{c['order']}, partly shared {c['partial']}, none shared {c['disjoint']}"
+        )
     print(
         f"'different' pairs blocked by the guard words: "
         f"{summary['different_caught_by_guard']}; by a different context: "
         f"{summary['different_other_context']}; refused (never cached): "
         f"{summary['refused']} pair(s)"
     )
-    safe = summary["safe_threshold"]
-    if safe is None:
-        print(
-            "No threshold is safe: a 'different' pair is identical to the cache. "
-            "Add a guard word for it."
+    print(
+        _safe_line(
+            summary["safe_threshold"],
+            f"Lowest threshold with no wrong reuse, plus {MARGIN}",
         )
-    else:
-        print(
-            f"Lowest threshold with no wrong reuse, plus {MARGIN}: {safe}  "
-            f"(configured: {summary['configured_threshold']})"
-        )
+        + f"  (configured: {summary['configured_threshold']})"
+    )
+    print(_safe_line(summary["safe_threshold_if_reordered"], "  same, if reordered"))
 
 
 async def run(retrieval: bool, only: set[str] | None, save: Path | None) -> int:
@@ -174,11 +232,13 @@ async def run(retrieval: bool, only: set[str] | None, save: Path | None) -> int:
     rows: list[dict] = []
     started = time.monotonic()
 
-    async def bucket(question: str) -> str | None:
-        """The cache bucket the API would use; None if it would refuse."""
+    async def context(question: str) -> tuple[str, list[int]] | None:
+        """The API's cache bucket and context chunk ids; None if it would refuse."""
         async with SessionFactory() as session:
             prepared = await prepare_answer(session, llm, question)
-        return None if prepared.refused else cache_bucket(prepared, llm)
+        if prepared.refused:
+            return None
+        return cache_bucket(prepared, llm), [c.id for c, _ in prepared.chunks]
 
     try:
         for pair in pairs:
@@ -195,13 +255,19 @@ async def run(retrieval: bool, only: set[str] | None, save: Path | None) -> int:
                 "guard_b": list(question_guard(pair["b"])),
                 "refused": False,
                 "same_context": None,  # None = not checked (--no-retrieval)
+                "context": None,  # same | order | partial | disjoint
+                "chunks_a": None,
+                "chunks_b": None,
             }
             row["guard_equal"] = row["guard_a"] == row["guard_b"]
             if retrieval:
-                bucket_a, bucket_b = await bucket(pair["a"]), await bucket(pair["b"])
+                got_a, got_b = await context(pair["a"]), await context(pair["b"])
                 # A refused question never reaches the cache, either way round.
-                row["refused"] = bucket_a is None or bucket_b is None
-                row["same_context"] = None if row["refused"] else bucket_a == bucket_b
+                row["refused"] = got_a is None or got_b is None
+                if got_a is not None and got_b is not None:
+                    row["same_context"] = got_a[0] == got_b[0]
+                    row["chunks_a"], row["chunks_b"] = got_a[1], got_b[1]
+                    row["context"] = context_difference(got_a[1], got_b[1])
             rows.append(row)
             print(f"  {pair['id']}", flush=True)
     finally:
