@@ -25,6 +25,7 @@ async def retrieve(
     hybrid: bool | None = None,
     reranker: Reranker | None = None,
     keyword_query: str | None = None,
+    query_embedding: list[float] | None = None,
 ) -> list[tuple]:
     """Return (chunk, distance) pairs, best first.
 
@@ -33,6 +34,8 @@ async def retrieve(
     reranker: None -> use the configured reranker from settings.
     keyword_query: "all" / "any" for the keyword half of hybrid search;
               None -> settings.keyword_query.
+    query_embedding: the query's vector if the caller already embedded it
+              (the answer cache needs it too); None -> embedded here.
     """
     settings = get_settings()
     top_k = top_k or settings.top_k
@@ -47,10 +50,17 @@ async def retrieve(
 
     if use_hybrid:
         candidates = await hybrid_search(
-            session, ollama, query, candidate_k, keyword_query
+            session,
+            ollama,
+            query,
+            candidate_k,
+            keyword_query,
+            query_embedding=query_embedding,
         )
     else:
-        candidates = await search_chunks(session, ollama, query, candidate_k)
+        candidates = await search_chunks(
+            session, ollama, query, candidate_k, query_embedding=query_embedding
+        )
     if not reranking_active:
         return rerank(query, candidates, active_reranker, top_k)
 

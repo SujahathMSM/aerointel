@@ -75,6 +75,9 @@ services:
       ANSWER_CHECK: ${ANSWER_CHECK:-off}
       ANSWER_CHECK_VERSION: ${ANSWER_CHECK_VERSION:-v2}
       PROMPT_VERSION: ${PROMPT_VERSION:-v1}
+      # Reuse answers for equivalent questions over identical passages (see README).
+      ANSWER_CACHE_ENABLED: ${ANSWER_CACHE_ENABLED:-false}
+      ANSWER_CACHE_MIN_SIMILARITY: ${ANSWER_CACHE_MIN_SIMILARITY:-0.97}
       # Who writes answers and runs the answer check: ollama (local) or anthropic
       # (passages leave the machine). Embeddings always stay on local Ollama.
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}

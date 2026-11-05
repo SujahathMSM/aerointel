@@ -108,16 +108,19 @@ async def hybrid_search(
     query: str,
     top_k: int = 5,
     keyword_query: str | None = None,
+    query_embedding: list[float] | None = None,
 ) -> list[tuple]:
     """Embed once, search both ways, fuse with RRF, backfill distances.
 
     Returns (chunk, cosine_distance) in fused order — same shape as
     search_chunks, so the distance gate in generation.py works unchanged.
     Keyword-only hits get their distance computed in one batched query so
-    the gate can still judge them.
+    the gate can still judge them. `query_embedding`: the query's vector if
+    the caller already has it.
     """
     settings = get_settings()
-    (query_embedding,) = await ollama.embed([query])
+    if query_embedding is None:
+        (query_embedding,) = await ollama.embed([query])
 
     vector_results = await vector_search(session, query_embedding, top_k)
     keyword_results = await keyword_search(session, query, top_k, keyword_query)

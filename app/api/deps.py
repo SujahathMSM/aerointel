@@ -6,6 +6,7 @@ from fastapi import Depends, Header, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.answer_cache import AnswerCache
 from app.core.auth import ANONYMOUS, Principal, TokenError, decode_access_token
 from app.core.config import get_settings
 from app.core.idempotency import IdempotencyStore
@@ -152,7 +153,13 @@ def get_idempotency_store(request: Request) -> IdempotencyStore | None:
     return getattr(request.app.state, "idempotency", None)
 
 
+def get_answer_cache(request: Request) -> AnswerCache | None:
+    """The shared answer cache, or None when ANSWER_CACHE_ENABLED=false."""
+    return getattr(request.app.state, "answer_cache", None)
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+AnswerCacheDep = Annotated[AnswerCache | None, Depends(get_answer_cache)]
 IdempotencyKeyDep = Annotated[str | None, Depends(idempotency_key)]
 IdempotencyStoreDep = Annotated[IdempotencyStore | None, Depends(get_idempotency_store)]
 OllamaDep = Annotated[OllamaClient, Depends(get_ollama)]

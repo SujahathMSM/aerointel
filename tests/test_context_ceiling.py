@@ -260,7 +260,7 @@ def _prepared(**overrides) -> generation.PreparedAnswer:
 async def test_query_reports_the_check_and_a_not_in_context_refusal(
     client, monkeypatch
 ):
-    async def fake_answer(session, ollama, question, top_k=None):
+    async def fake_answer(session, ollama, question, top_k=None, cache=None):
         return generation.AnswerResult(
             question=question,
             refused=True,

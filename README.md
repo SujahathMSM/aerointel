@@ -44,7 +44,7 @@ are caught by reading the passages, not by distance. See
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | Postgres full-text keyword search + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic response cache still to do | 🚧 in progress |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic answer cache ✅ (off by default; measured: 0 wrong reuses at 0.97, but paraphrases rarely retrieve identical passages, so in practice it serves repeated questions) | ✅ built |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback, paragraph-aware chunking) · page-scored eval on a 35-question FAA golden set ✅ · reading limit past the gate ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
 | Trust layer | Figure check against cited passages ✅ · unknown-word check ✅ · answer check ("do these passages answer it?") ✅ · local or Anthropic model for answers, measured side by side ✅ · warnings, revision awareness still to do | 🚧 in progress |
@@ -137,6 +137,7 @@ flowchart TB
     api --> idem["Idempotency keys"]
     rl --> redis[("Redis")]
     idem --> redis
+    svc -. "ANSWER_CACHE_ENABLED" .-> redis
     api --> svc["services/<br/>retrieval · hybrid · generation<br/>verification · answerability · documents"]
     svc --> db[("Postgres 18 + pgvector<br/>documents · chunks · tsvector")]
     svc --> llm["llm/<br/>timeout · retry · circuit breaker"]
@@ -176,6 +177,7 @@ app/
     logging.py           structlog JSON logs, RequestIdMiddleware
     resilience.py         retry() with backoff, CircuitBreaker
     rate_limit.py          Redis token bucket (Lua), fail-open/closed on Redis outage
+    answer_cache.py        semantic answer cache (Redis), fail-open on Redis outage
   api/
     deps.py              FastAPI dependencies (DB session, Ollama client, rate limit)
     health.py             /health/live, /health/ready
@@ -327,6 +329,96 @@ asserts one insert). Each claim carries a random token and is released by a Lua
 script that checks it, so a slow request can't delete the claim of whoever took
 the key after it. The release is shielded from cancellation, because a client
 hanging up cancels the request mid-work.
+
+### Semantic answer cache (Phase 2)
+
+Writing the answer is the slow (local GPU) or paid (Anthropic) part of a query;
+retrieval and the gates are cheap. With `ANSWER_CACHE_ENABLED=true`, an answer
+is reused for a later question that means the same thing — but only when that
+is safe:
+
+1. **Every gate runs first, for the new question.** Distance, unknown words and
+   the answer check all happen before the cache is consulted, so a refused
+   question never reaches it and the cache cannot turn a refusal into an answer.
+   Refusals are never stored.
+2. **The context must be identical.** The cache is split into buckets by a hash
+   of everything except the question that shapes the answer: the passages the
+   model would read (text and order, so every `[n]` points at the same passage),
+   the system prompt, the answering model, temperature, context window and the
+   embedding model. New documents, `ingest_pdfs.py --replace`, a new prompt
+   version or a model switch all land in a new bucket — nothing needs flushing;
+   old buckets expire after the TTL.
+3. **The questions must mean the same thing.** Within a bucket, the two
+   questions' embeddings must have cosine similarity ≥
+   `ANSWER_CACHE_MIN_SIMILARITY` (a repeated question always matches), **and**
+   they must agree on the words embeddings blur: numbers and identifiers
+   (`10-32` vs `1/4-28`, `AN960` vs `AN970`, also spelled out: "quarter-inch"
+   vs "three-eighths-inch"), negations (`not`, `never`,
+   `without`), and limits/directions (`minimum`/`maximum`, `before`/`after`,
+   `install`/`remove`, …). "Torque for a 10-32 bolt" never reuses the answer
+   for a 1/4-28 bolt, even though both retrieve the same torque table.
+
+On a hit the figure check runs again against the new question (so
+`VERIFY_MODE=block` still withholds), and the response says `"cached": true`
+(on the stream: `meta.cached`, then the whole answer as one `token` event). An
+answer the figure check flagged is still returned to its own caller but is never
+stored for anyone else. Answers written by `/v1/query` and `/v1/query/stream`
+share one cache. Redis keeps no question text: an entry is a hash of the
+normalised question, a hash of its guard words, its embedding and the answer.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `ANSWER_CACHE_ENABLED` | `false` | `true` turns the cache on (one Redis list per bucket). |
+| `ANSWER_CACHE_MIN_SIMILARITY` | `0.97` | Cosine similarity two questions' embeddings need, 0–1. Deliberately strict; measure with `evals.cache_eval` before changing it. |
+| `ANSWER_CACHE_TTL_SECONDS` | `86400` | How long a bucket lives after its last new answer. |
+| `ANSWER_CACHE_MAX_ENTRIES` | `20` | Answers kept per bucket, newest first. |
+
+Redis down: lookups are misses and stores are skipped (logged), behind a 0.5 s
+timeout and a circuit breaker — the cache is an optimisation, never a dependency,
+so it fails open like rate limiting. With the cache on, the question is embedded
+once and that vector is used by retrieval too, so the cache adds no model call.
+
+**Choosing the threshold.** `evals/cache_pairs.json` holds labelled question
+pairs on AC 43.13-1B: "same" (A's answer correctly answers B: paraphrases,
+reordered words, a polite wrapper) and "different" (it does not: another bolt
+size, minimum vs maximum, galvanic vs exfoliation corrosion, small vs large
+holes). Most "different" pairs are picked to retrieve the same passages, since
+only those can share a bucket.
+
+```powershell
+python -m evals.cache_eval                  # Ollama + Postgres with the manual ingested
+python -m evals.cache_eval --no-retrieval   # Ollama only; assumes every pair shares its context
+python -m evals.cache_eval --save evals/results/cache.json
+```
+
+It embeds each pair with the real model, applies the guard words, runs both
+questions through `prepare_answer()` to see whether they would share a bucket,
+and prints right reuses and **wrong reuses** at each threshold, plus the lowest
+threshold with no wrong reuse (plus 0.01). Wrong reuses must be 0 at the
+configured value. It also says how each pair's passages differ (identical, same
+passages in another order, partly shared, none shared) and repeats the table
+"if reordered", i.e. as if a cached answer's `[n]` citations were renumbered to
+fit the same passages in another order. CI checks the pair file and the guard-word expectations
+written in it (`tests/test_cache_eval.py`) without a model.
+
+**Measured** (2026-11-05, EmbeddingGemma, hybrid retrieval, `top_k=5`, 35 pairs;
+`evals/results/cache.json`, `cache_v2.json`):
+
+| | Result |
+|---|---|
+| Wrong reuses at 0.97 | **0 of 16** "different" pairs (4 more are refused, so never reach the cache) |
+| Lowest safe threshold | 0.921: the closest exposed "different" pair is edge distance vs spacing for a row of rivets (0.911, identical passages) |
+| Caught by the guard words | 5 "different" pairs, e.g. torque for a "quarter-inch" vs a "three-eighths-inch" bolt: identical passages at 0.960, so before number words were guard words only the threshold held it (safe threshold was then exactly 0.97) |
+| Right reuses of a reworded question | **0 of 13** at 0.97; at most 2 at any safe threshold |
+| Why so few | 11 of 13 reworded questions retrieve *partly different* passages, so they never share a bucket; 2 retrieve identical ones. Even a change of case and punctuation alone retrieves differently (similarity 0.957). |
+| Renumbering citations for reordered passages | Not built: no reworded pair retrieved the same passages in another order, and it would add a wrong reuse (safety wire for large vs small holes, 0.959) |
+
+So on this manual the cache in practice answers **repeated questions** (and the
+occasional rewording that happens to retrieve the same passages) without a model
+call. Reusing across partly different passages would let an answer cite passages
+the new question did not retrieve, which the figure check could no longer verify,
+so the identical-context rule stays. The threshold stays at 0.97: lowering it to
+about 0.93 would gain at most one reuse for a much thinner margin.
 
 ### Streaming answers (Phase 2)
 

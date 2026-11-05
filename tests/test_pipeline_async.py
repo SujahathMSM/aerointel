@@ -23,7 +23,7 @@ class _BlockingReranker:
 
 
 async def test_reranking_does_not_block_the_event_loop(monkeypatch):
-    async def fake_search(session, ollama, query, top_k=5):
+    async def fake_search(session, ollama, query, top_k=5, **kwargs):
         return [(_Chunk(1, "a"), 0.1), (_Chunk(2, "b"), 0.2)]
 
     monkeypatch.setattr(pipeline, "search_chunks", fake_search)

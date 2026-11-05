@@ -28,6 +28,10 @@ os.environ["RATE_LIMIT_KEY_PREFIX"] = f"test-app:{uuid.uuid4().hex}"
 os.environ["RATE_LIMIT_CAPACITY"] = "1000"
 # Same isolation for idempotency keys (tests reuse key strings like "k1").
 os.environ["IDEMPOTENCY_KEY_PREFIX"] = f"test-idem:{uuid.uuid4().hex}"
+# The answer cache is off unless a test turns it on (and then gets its own
+# prefix, so a cached answer from one run can never satisfy the next).
+os.environ["ANSWER_CACHE_ENABLED"] = "false"
+os.environ["ANSWER_CACHE_KEY_PREFIX"] = f"test-cache:{uuid.uuid4().hex}"
 
 # The trust-layer switches are read from the developer's .env too (they set
 # ANSWERABILITY_MODE=flag to try it live), and a fake DB session cannot run the

@@ -1,0 +1,1175 @@
+{
+  "label": "embedding_model=embeddinggemma  retrieval=on  hybrid=True  max_distance=0.48  top_k=5  model=qwen3:4b-instruct  71s",
+  "summary": {
+    "pairs": 35,
+    "refused": 6,
+    "different_caught_by_guard": 5,
+    "different_other_context": 13,
+    "context_of_same": {
+      "same": 2,
+      "order": 0,
+      "partial": 11,
+      "disjoint": 0
+    },
+    "context_of_different": {
+      "same": 3,
+      "order": 1,
+      "partial": 12,
+      "disjoint": 0
+    },
+    "safe_threshold": 0.921,
+    "safe_threshold_if_reordered": 0.968,
+    "configured_threshold": 0.97,
+    "sweep": [
+      {
+        "threshold": 0.85,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 1,
+        "wrong_ids": [
+          "rivet-edge-vs-spacing"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.88,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 1,
+        "wrong_ids": [
+          "rivet-edge-vs-spacing"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.9,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 1,
+        "wrong_ids": [
+          "rivet-edge-vs-spacing"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.92,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.94,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.95,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.96,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.97,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.98,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.99,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      }
+    ],
+    "sweep_if_reordered": [
+      {
+        "threshold": 0.85,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 2,
+        "wrong_ids": [
+          "rivet-edge-vs-spacing",
+          "safety-wire-large-vs-small-holes"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.88,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 2,
+        "wrong_ids": [
+          "rivet-edge-vs-spacing",
+          "safety-wire-large-vs-small-holes"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.9,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 2,
+        "wrong_ids": [
+          "rivet-edge-vs-spacing",
+          "safety-wire-large-vs-small-holes"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.92,
+        "right_reuses": 1,
+        "same_total": 13,
+        "wrong_reuses": 1,
+        "wrong_ids": [
+          "safety-wire-large-vs-small-holes"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.94,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 1,
+        "wrong_ids": [
+          "safety-wire-large-vs-small-holes"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.95,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 1,
+        "wrong_ids": [
+          "safety-wire-large-vs-small-holes"
+        ],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.96,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.97,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.98,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      },
+      {
+        "threshold": 0.99,
+        "right_reuses": 0,
+        "same_total": 13,
+        "wrong_reuses": 0,
+        "wrong_ids": [],
+        "different_total": 16
+      }
+    ]
+  },
+  "rows": [
+    {
+      "id": "cable-wear-paraphrase",
+      "label": "same",
+      "note": "paraphrase",
+      "a": "How much can the outer wires of a control cable wear before the cable has to be replaced?",
+      "b": "What is the wear limit for the outer wires of a control cable before it must be replaced?",
+      "similarity": 0.970441,
+      "exact": false,
+      "guard_a": [
+        "before"
+      ],
+      "guard_b": [
+        "before"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4752,
+        4749,
+        4734,
+        4751,
+        4754
+      ],
+      "chunks_b": [
+        4752,
+        4749,
+        4734,
+        4722,
+        4751
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "proof-load-paraphrase",
+      "label": "same",
+      "note": "paraphrase",
+      "a": "What proof load is used to test cable terminals and splices before installation?",
+      "b": "To what load should cable terminals and splices be proof tested before they are installed?",
+      "similarity": 0.902851,
+      "exact": false,
+      "guard_a": [
+        "before",
+        "install"
+      ],
+      "guard_b": [
+        "before",
+        "install"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4733,
+        4739,
+        4748,
+        5251
+      ],
+      "chunks_b": [
+        4733,
+        4739,
+        4748,
+        5375
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "safety-wire-paraphrase",
+      "label": "same",
+      "note": "paraphrase",
+      "a": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
+      "b": "Which safety wire diameter is used for double-twist safetying when the holes are large?",
+      "similarity": 0.914014,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4710,
+        4709,
+        4711,
+        4769,
+        4771
+      ],
+      "chunks_b": [
+        4710,
+        4709,
+        4777,
+        4711,
+        4776
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "bond-resistance-paraphrase",
+      "label": "same",
+      "note": "paraphrase; 'maximum' only in B, so the guard should block it (a missed reuse, not a wrong one)",
+      "a": "What resistance must the electrical bond between a piece of equipment and the aircraft structure have?",
+      "b": "What is the maximum allowed resistance of an electrical bond from equipment to aircraft structure?",
+      "similarity": 0.911349,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [
+        "max"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        5319,
+        5316,
+        5317,
+        5174,
+        5329
+      ],
+      "chunks_b": [
+        5319,
+        5174,
+        5329,
+        5317,
+        5331
+      ],
+      "guard_equal": false
+    },
+    {
+      "id": "galvanic-paraphrase",
+      "label": "same",
+      "note": "same words, different order",
+      "a": "What is galvanic corrosion and how can I recognise it?",
+      "b": "How do I recognise galvanic corrosion, and what is it?",
+      "similarity": 0.982471,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4548,
+        4529,
+        4578,
+        3915,
+        4591
+      ],
+      "chunks_b": [
+        4548,
+        4578,
+        3915,
+        4545
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "galvanic-case-punctuation",
+      "label": "same",
+      "note": "case and punctuation only: must always hit",
+      "a": "What is galvanic corrosion and how can I recognise it?",
+      "b": "what is galvanic corrosion and how can i recognise it",
+      "similarity": 0.957414,
+      "exact": true,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4548,
+        4529,
+        4578,
+        3915,
+        4591
+      ],
+      "chunks_b": [
+        4548,
+        4529,
+        4540,
+        3915,
+        4527
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "exfoliation-paraphrase",
+      "label": "same",
+      "note": "same words, different order",
+      "a": "What does exfoliation corrosion look like and where does it usually show up?",
+      "b": "Where does exfoliation corrosion usually appear and what does it look like?",
+      "similarity": 0.978239,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4547,
+        4548,
+        4578,
+        4538
+      ],
+      "chunks_b": [
+        4547,
+        4548,
+        4537,
+        4578,
+        4539
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "unvented-cap-paraphrase",
+      "label": "same",
+      "note": "paraphrase",
+      "a": "What goes wrong if a vented fuel tank cap is replaced with an unvented one?",
+      "b": "What happens if someone fits an unvented cap on a fuel tank that needs a vented cap?",
+      "similarity": 0.915728,
+      "exact": false,
+      "guard_a": [
+        "1"
+      ],
+      "guard_b": [],
+      "refused": false,
+      "same_context": true,
+      "context": "same",
+      "chunks_a": [
+        4868
+      ],
+      "chunks_b": [
+        4868
+      ],
+      "guard_equal": false
+    },
+    {
+      "id": "tire-gas-paraphrase",
+      "label": "same",
+      "note": "paraphrase with the negation in both",
+      "a": "Which gas is recommended for inflating aircraft tires, and which must never be used?",
+      "b": "What gas should be used to inflate aircraft tires, and which gas must never be used?",
+      "similarity": 0.951217,
+      "exact": false,
+      "guard_a": [
+        "never"
+      ],
+      "guard_b": [
+        "never"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4967,
+        4968,
+        4964,
+        4970
+      ],
+      "chunks_b": [
+        4967,
+        4968,
+        4964,
+        4969,
+        4970
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "empty-weight-cg-paraphrase",
+      "label": "same",
+      "note": "paraphrase with an abbreviation",
+      "a": "What is the empty weight center of gravity of an aircraft?",
+      "b": "How is the empty weight CG of an aircraft defined?",
+      "similarity": 0.861427,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        5077,
+        3927,
+        5087,
+        5079,
+        5078
+      ],
+      "chunks_b": [
+        5073,
+        5077,
+        5078,
+        5086,
+        5092
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "punch-tester-paraphrase",
+      "label": "same",
+      "note": "paraphrase",
+      "a": "How reliable is a mechanical punch tester for judging the condition of aircraft fabric?",
+      "b": "Can a mechanical punch tester be trusted to judge aircraft fabric condition?",
+      "similarity": 0.964186,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": true,
+      "same_context": null,
+      "context": null,
+      "chunks_a": null,
+      "chunks_b": null,
+      "guard_equal": true
+    },
+    {
+      "id": "wire-clamp-paraphrase",
+      "label": "same",
+      "note": "paraphrase",
+      "a": "How far apart can clamps be when supporting wires and cables in an aircraft?",
+      "b": "What is the spacing between clamps that support wiring and cables in an aircraft?",
+      "similarity": 0.928664,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        5225,
+        5280,
+        5226,
+        5233,
+        4863
+      ],
+      "chunks_b": [
+        5225,
+        5280,
+        5278,
+        5233,
+        5226
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "battery-storage-paraphrase",
+      "label": "same",
+      "note": "paraphrase; 'not' only in B, so the guard should block it (a missed reuse, not a wrong one)",
+      "a": "Why is it dangerous to service lead-acid and nickel-cadmium batteries in the same area?",
+      "b": "Why must lead-acid and nicad batteries not be serviced in the same place?",
+      "similarity": 0.846893,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [
+        "not"
+      ],
+      "refused": true,
+      "same_context": null,
+      "context": null,
+      "chunks_a": null,
+      "chunks_b": null,
+      "guard_equal": false
+    },
+    {
+      "id": "magnetic-particle-paraphrase",
+      "label": "same",
+      "note": "paraphrase",
+      "a": "Which materials can be checked with magnetic particle inspection?",
+      "b": "What materials can magnetic particle inspection be used on?",
+      "similarity": 0.9267,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": true,
+      "context": "same",
+      "chunks_a": [
+        4434,
+        4440,
+        4441,
+        3824,
+        4438
+      ],
+      "chunks_b": [
+        4434,
+        4440,
+        4441,
+        3824,
+        4438
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "polite-prefix",
+      "label": "same",
+      "note": "polite wrapper around the same question",
+      "a": "What is the empty weight center of gravity of an aircraft?",
+      "b": "Can you tell me what the empty weight center of gravity of an aircraft is?",
+      "similarity": 0.974914,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        5077,
+        3927,
+        5087,
+        5079,
+        5078
+      ],
+      "chunks_b": [
+        5077,
+        3927,
+        5080,
+        5079,
+        5078
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "rivet-edge-vs-spacing-max",
+      "label": "different",
+      "note": "minimum/maximum: the guard should catch it",
+      "a": "What is the minimum edge distance for a single row of rivets?",
+      "b": "What is the maximum spacing for a single row of rivets?",
+      "similarity": 0.847682,
+      "exact": false,
+      "guard_a": [
+        "min"
+      ],
+      "guard_b": [
+        "max"
+      ],
+      "refused": true,
+      "same_context": null,
+      "context": null,
+      "chunks_a": null,
+      "chunks_b": null,
+      "guard_equal": false
+    },
+    {
+      "id": "rivet-edge-vs-spacing",
+      "label": "different",
+      "note": "different quantity, same table, no guard word: only the threshold can catch it",
+      "a": "What edge distance should a single row of rivets have?",
+      "b": "What spacing should a single row of rivets have?",
+      "similarity": 0.911313,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": true,
+      "context": "same",
+      "chunks_a": [
+        4258,
+        4259,
+        4260,
+        4280
+      ],
+      "chunks_b": [
+        4258,
+        4259,
+        4260,
+        4280
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "turnbuckle-threads-number",
+      "label": "different",
+      "note": "B adds a size: the guard should catch it",
+      "a": "After safetying a turnbuckle, how many threads of the terminal may still show?",
+      "b": "After safetying a turnbuckle on a 1/8 inch cable, how many threads may still show?",
+      "similarity": 0.859505,
+      "exact": false,
+      "guard_a": [
+        "after"
+      ],
+      "guard_b": [
+        "1/8",
+        "after"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4773,
+        4774,
+        4770,
+        4778,
+        4775
+      ],
+      "chunks_b": [
+        4774,
+        4768,
+        4773,
+        4778,
+        4776
+      ],
+      "guard_equal": false
+    },
+    {
+      "id": "safety-wire-large-vs-small-holes",
+      "label": "different",
+      "note": "one word changes the answer, no guard word: only the threshold can catch it",
+      "a": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
+      "b": "What diameter of safety wire should I use with the double-twist method on parts with small holes?",
+      "similarity": 0.958454,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "order",
+      "chunks_a": [
+        4710,
+        4709,
+        4711,
+        4769,
+        4771
+      ],
+      "chunks_b": [
+        4710,
+        4711,
+        4709,
+        4769,
+        4771
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "safety-wire-double-vs-single",
+      "label": "different",
+      "note": "different method, same section",
+      "a": "What diameter of safety wire is used with the double-twist method?",
+      "b": "What diameter of safety wire is used with the single-wire method?",
+      "similarity": 0.767637,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4710,
+        4709,
+        4769,
+        4711,
+        4776
+      ],
+      "chunks_b": [
+        4709,
+        4711,
+        4710,
+        4777
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "galvanic-vs-exfoliation",
+      "label": "different",
+      "note": "one word changes the topic",
+      "a": "What is galvanic corrosion and how can I recognise it?",
+      "b": "What is exfoliation corrosion and how can I recognise it?",
+      "similarity": 0.786811,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4548,
+        4529,
+        4578,
+        3915,
+        4591
+      ],
+      "chunks_b": [
+        4547,
+        4615,
+        3915,
+        4578,
+        4548
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "galvanic-vs-intergranular",
+      "label": "different",
+      "note": "one word changes the topic",
+      "a": "What is galvanic corrosion?",
+      "b": "What is intergranular corrosion?",
+      "similarity": 0.78302,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4548,
+        4529,
+        4540,
+        4545
+      ],
+      "chunks_b": [
+        4547,
+        4546,
+        4545
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "cable-broken-wires-vs-corrosion",
+      "label": "different",
+      "note": "same inspection section, different defect",
+      "a": "How do I find broken wires in a control cable during an inspection?",
+      "b": "How do I find corrosion in a control cable during an inspection?",
+      "similarity": 0.886859,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4749,
+        4750,
+        4722,
+        4751,
+        4582
+      ],
+      "chunks_b": [
+        4582,
+        4756,
+        4749,
+        4722,
+        4646
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "cable-kink-vs-wear",
+      "label": "different",
+      "note": "same replacement criteria page, different condition",
+      "a": "When must a kinked control cable be replaced?",
+      "b": "When must a worn control cable be replaced?",
+      "similarity": 0.931604,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4734,
+        4751,
+        4749,
+        4752
+      ],
+      "chunks_b": [
+        4734,
+        4749,
+        4752,
+        4582
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "clamps-wires-vs-fluid-lines",
+      "label": "different",
+      "note": "different system",
+      "a": "How far apart can clamps be when supporting wires and cables in an aircraft?",
+      "b": "How far apart can clamps be when supporting fluid lines in an aircraft?",
+      "similarity": 0.894126,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        5225,
+        5280,
+        5226,
+        5233,
+        4863
+      ],
+      "chunks_b": [
+        5271,
+        4864,
+        4863,
+        5280
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "tire-gas-recommended-vs-never",
+      "label": "different",
+      "note": "never: the guard should catch it",
+      "a": "Which gas is recommended for inflating aircraft tires?",
+      "b": "Which gas must never be used for inflating aircraft tires?",
+      "similarity": 0.856078,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [
+        "never"
+      ],
+      "refused": false,
+      "same_context": true,
+      "context": "same",
+      "chunks_a": [
+        4967,
+        4968,
+        4969,
+        4970
+      ],
+      "chunks_b": [
+        4967,
+        4968,
+        4969,
+        4970
+      ],
+      "guard_equal": false
+    },
+    {
+      "id": "blast-aluminium-vs-magnesium",
+      "label": "different",
+      "note": "different material",
+      "a": "How long may an abrasive blast stream stay on one spot of an aluminium skin?",
+      "b": "How long may an abrasive blast stream stay on one spot of a magnesium skin?",
+      "similarity": 0.850069,
+      "exact": false,
+      "guard_a": [
+        "1"
+      ],
+      "guard_b": [
+        "1"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4615,
+        4627,
+        4614,
+        4610
+      ],
+      "chunks_b": [
+        4627,
+        4626,
+        4615,
+        4618
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "titanium-vs-aluminium-colour",
+      "label": "different",
+      "note": "different material",
+      "a": "Why does heated titanium change colour, and should the coloured film be removed?",
+      "b": "Why does heated aluminium change colour, and should the coloured film be removed?",
+      "similarity": 0.856239,
+      "exact": false,
+      "guard_a": [
+        "remove"
+      ],
+      "guard_b": [
+        "remove"
+      ],
+      "refused": true,
+      "same_context": null,
+      "context": null,
+      "chunks_a": null,
+      "chunks_b": null,
+      "guard_equal": true
+    },
+    {
+      "id": "battery-leadacid-vs-nicad-electrolyte",
+      "label": "different",
+      "note": "different chemistry, opposite neutraliser",
+      "a": "How do I neutralise spilled electrolyte from a lead-acid battery?",
+      "b": "How do I neutralise spilled electrolyte from a nickel-cadmium battery?",
+      "similarity": 0.923665,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4601,
+        5123,
+        5114,
+        5134
+      ],
+      "chunks_b": [
+        5114,
+        4601,
+        5134,
+        5136
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "magnetic-particle-vs-penetrant",
+      "label": "different",
+      "note": "different method, same NDI chapter",
+      "a": "Which materials can be checked with magnetic particle inspection?",
+      "b": "Which materials can be checked with liquid penetrant inspection?",
+      "similarity": 0.814744,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4434,
+        4440,
+        4441,
+        3824,
+        4438
+      ],
+      "chunks_b": [
+        4465,
+        4466,
+        4467,
+        4480,
+        4434
+      ],
+      "guard_equal": true
+    },
+    {
+      "id": "oxygen-secure-vs-store",
+      "label": "different",
+      "note": "related but a different requirement",
+      "a": "How should oxygen and fuel gas cylinders be secured in a welding area?",
+      "b": "How far apart must oxygen and fuel gas cylinders be stored?",
+      "similarity": 0.707407,
+      "exact": false,
+      "guard_a": [],
+      "guard_b": [],
+      "refused": true,
+      "same_context": null,
+      "context": null,
+      "chunks_a": null,
+      "chunks_b": null,
+      "guard_equal": true
+    },
+    {
+      "id": "fuel-tank-weld-before-after",
+      "label": "different",
+      "note": "before/after: the guard should catch it",
+      "a": "What has to be done to a metal fuel tank before it is welded?",
+      "b": "What has to be done to a metal fuel tank after it is welded?",
+      "similarity": 0.926071,
+      "exact": false,
+      "guard_a": [
+        "before"
+      ],
+      "guard_b": [
+        "after"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4866,
+        4865,
+        4874,
+        4382
+      ],
+      "chunks_b": [
+        4866,
+        4865,
+        4874,
+        4867
+      ],
+      "guard_equal": false
+    },
+    {
+      "id": "cable-install-vs-remove",
+      "label": "different",
+      "note": "installed/removed: the guard should catch it (inflected forms)",
+      "a": "What should be checked when a control cable is installed?",
+      "b": "What should be checked when a control cable is removed?",
+      "similarity": 0.843485,
+      "exact": false,
+      "guard_a": [
+        "install"
+      ],
+      "guard_b": [
+        "remove"
+      ],
+      "refused": true,
+      "same_context": null,
+      "context": null,
+      "chunks_a": null,
+      "chunks_b": null,
+      "guard_equal": false
+    },
+    {
+      "id": "torque-table-sizes",
+      "label": "different",
+      "note": "different size in the same table: the guard should catch it",
+      "a": "What torque should a 10-32 fine thread bolt get when the manufacturer gives none?",
+      "b": "What torque should a 1/4-28 fine thread bolt get when the manufacturer gives none?",
+      "similarity": 0.865564,
+      "exact": false,
+      "guard_a": [
+        "10-32"
+      ],
+      "guard_b": [
+        "1/4-28"
+      ],
+      "refused": false,
+      "same_context": false,
+      "context": "partial",
+      "chunks_a": [
+        4675,
+        4671,
+        4674,
+        4672
+      ],
+      "chunks_b": [
+        4675,
+        4671,
+        4674
+      ],
+      "guard_equal": false
+    },
+    {
+      "id": "torque-table-sizes-words",
+      "label": "different",
+      "note": "sizes spelled in words: the guard should catch it (number words; measured 0.96 similar with the same passages before it did)",
+      "a": "What torque should a quarter-inch fine thread bolt get when the manufacturer gives none?",
+      "b": "What torque should a three-eighths-inch fine thread bolt get when the manufacturer gives none?",
+      "similarity": 0.959611,
+      "exact": false,
+      "guard_a": [
+        "quarter"
+      ],
+      "guard_b": [
+        "3",
+        "eighth"
+      ],
+      "refused": false,
+      "same_context": true,
+      "context": "same",
+      "chunks_a": [
+        4674,
+        4675,
+        4671,
+        4672
+      ],
+      "chunks_b": [
+        4674,
+        4675,
+        4671,
+        4672
+      ],
+      "guard_equal": false
+    }
+  ]
+}

@@ -1,0 +1,250 @@
+{
+  "about": "Question pairs for the semantic answer cache (python -m evals.cache_eval), on FAA AC 43.13-1B. 'same': the answer written for A is a correct answer to B, so reusing it is right. 'different': it is not, so a reuse would hand B someone else's answer. Most 'different' pairs are chosen to retrieve the same passages as each other, because only those can share a cache bucket; the guard words (numbers, negations, min/max-type words) catch some of them, the similarity threshold has to catch the rest. 'note' says what the pair tests.",
+  "pairs": [
+    {
+      "id": "cable-wear-paraphrase",
+      "label": "same",
+      "a": "How much can the outer wires of a control cable wear before the cable has to be replaced?",
+      "b": "What is the wear limit for the outer wires of a control cable before it must be replaced?",
+      "note": "paraphrase"
+    },
+    {
+      "id": "proof-load-paraphrase",
+      "label": "same",
+      "a": "What proof load is used to test cable terminals and splices before installation?",
+      "b": "To what load should cable terminals and splices be proof tested before they are installed?",
+      "note": "paraphrase"
+    },
+    {
+      "id": "safety-wire-paraphrase",
+      "label": "same",
+      "a": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
+      "b": "Which safety wire diameter is used for double-twist safetying when the holes are large?",
+      "note": "paraphrase"
+    },
+    {
+      "id": "bond-resistance-paraphrase",
+      "label": "same",
+      "a": "What resistance must the electrical bond between a piece of equipment and the aircraft structure have?",
+      "b": "What is the maximum allowed resistance of an electrical bond from equipment to aircraft structure?",
+      "note": "paraphrase; 'maximum' only in B, so the guard should block it (a missed reuse, not a wrong one)"
+    },
+    {
+      "id": "galvanic-paraphrase",
+      "label": "same",
+      "a": "What is galvanic corrosion and how can I recognise it?",
+      "b": "How do I recognise galvanic corrosion, and what is it?",
+      "note": "same words, different order"
+    },
+    {
+      "id": "galvanic-case-punctuation",
+      "label": "same",
+      "a": "What is galvanic corrosion and how can I recognise it?",
+      "b": "what is galvanic corrosion and how can i recognise it",
+      "note": "case and punctuation only: must always hit"
+    },
+    {
+      "id": "exfoliation-paraphrase",
+      "label": "same",
+      "a": "What does exfoliation corrosion look like and where does it usually show up?",
+      "b": "Where does exfoliation corrosion usually appear and what does it look like?",
+      "note": "same words, different order"
+    },
+    {
+      "id": "unvented-cap-paraphrase",
+      "label": "same",
+      "a": "What goes wrong if a vented fuel tank cap is replaced with an unvented one?",
+      "b": "What happens if someone fits an unvented cap on a fuel tank that needs a vented cap?",
+      "note": "paraphrase"
+    },
+    {
+      "id": "tire-gas-paraphrase",
+      "label": "same",
+      "a": "Which gas is recommended for inflating aircraft tires, and which must never be used?",
+      "b": "What gas should be used to inflate aircraft tires, and which gas must never be used?",
+      "note": "paraphrase with the negation in both"
+    },
+    {
+      "id": "empty-weight-cg-paraphrase",
+      "label": "same",
+      "a": "What is the empty weight center of gravity of an aircraft?",
+      "b": "How is the empty weight CG of an aircraft defined?",
+      "note": "paraphrase with an abbreviation"
+    },
+    {
+      "id": "punch-tester-paraphrase",
+      "label": "same",
+      "a": "How reliable is a mechanical punch tester for judging the condition of aircraft fabric?",
+      "b": "Can a mechanical punch tester be trusted to judge aircraft fabric condition?",
+      "note": "paraphrase"
+    },
+    {
+      "id": "wire-clamp-paraphrase",
+      "label": "same",
+      "a": "How far apart can clamps be when supporting wires and cables in an aircraft?",
+      "b": "What is the spacing between clamps that support wiring and cables in an aircraft?",
+      "note": "paraphrase"
+    },
+    {
+      "id": "battery-storage-paraphrase",
+      "label": "same",
+      "a": "Why is it dangerous to service lead-acid and nickel-cadmium batteries in the same area?",
+      "b": "Why must lead-acid and nicad batteries not be serviced in the same place?",
+      "note": "paraphrase; 'not' only in B, so the guard should block it (a missed reuse, not a wrong one)"
+    },
+    {
+      "id": "magnetic-particle-paraphrase",
+      "label": "same",
+      "a": "Which materials can be checked with magnetic particle inspection?",
+      "b": "What materials can magnetic particle inspection be used on?",
+      "note": "paraphrase"
+    },
+    {
+      "id": "polite-prefix",
+      "label": "same",
+      "a": "What is the empty weight center of gravity of an aircraft?",
+      "b": "Can you tell me what the empty weight center of gravity of an aircraft is?",
+      "note": "polite wrapper around the same question"
+    },
+    {
+      "id": "rivet-edge-vs-spacing-max",
+      "label": "different",
+      "a": "What is the minimum edge distance for a single row of rivets?",
+      "b": "What is the maximum spacing for a single row of rivets?",
+      "note": "minimum/maximum: the guard should catch it"
+    },
+    {
+      "id": "rivet-edge-vs-spacing",
+      "label": "different",
+      "a": "What edge distance should a single row of rivets have?",
+      "b": "What spacing should a single row of rivets have?",
+      "note": "different quantity, same table, no guard word: only the threshold can catch it"
+    },
+    {
+      "id": "turnbuckle-threads-number",
+      "label": "different",
+      "a": "After safetying a turnbuckle, how many threads of the terminal may still show?",
+      "b": "After safetying a turnbuckle on a 1/8 inch cable, how many threads may still show?",
+      "note": "B adds a size: the guard should catch it"
+    },
+    {
+      "id": "safety-wire-large-vs-small-holes",
+      "label": "different",
+      "a": "What diameter of safety wire should I use with the double-twist method on parts with large holes?",
+      "b": "What diameter of safety wire should I use with the double-twist method on parts with small holes?",
+      "note": "one word changes the answer, no guard word: only the threshold can catch it"
+    },
+    {
+      "id": "safety-wire-double-vs-single",
+      "label": "different",
+      "a": "What diameter of safety wire is used with the double-twist method?",
+      "b": "What diameter of safety wire is used with the single-wire method?",
+      "note": "different method, same section"
+    },
+    {
+      "id": "galvanic-vs-exfoliation",
+      "label": "different",
+      "a": "What is galvanic corrosion and how can I recognise it?",
+      "b": "What is exfoliation corrosion and how can I recognise it?",
+      "note": "one word changes the topic"
+    },
+    {
+      "id": "galvanic-vs-intergranular",
+      "label": "different",
+      "a": "What is galvanic corrosion?",
+      "b": "What is intergranular corrosion?",
+      "note": "one word changes the topic"
+    },
+    {
+      "id": "cable-broken-wires-vs-corrosion",
+      "label": "different",
+      "a": "How do I find broken wires in a control cable during an inspection?",
+      "b": "How do I find corrosion in a control cable during an inspection?",
+      "note": "same inspection section, different defect"
+    },
+    {
+      "id": "cable-kink-vs-wear",
+      "label": "different",
+      "a": "When must a kinked control cable be replaced?",
+      "b": "When must a worn control cable be replaced?",
+      "note": "same replacement criteria page, different condition"
+    },
+    {
+      "id": "clamps-wires-vs-fluid-lines",
+      "label": "different",
+      "a": "How far apart can clamps be when supporting wires and cables in an aircraft?",
+      "b": "How far apart can clamps be when supporting fluid lines in an aircraft?",
+      "note": "different system"
+    },
+    {
+      "id": "tire-gas-recommended-vs-never",
+      "label": "different",
+      "a": "Which gas is recommended for inflating aircraft tires?",
+      "b": "Which gas must never be used for inflating aircraft tires?",
+      "note": "never: the guard should catch it"
+    },
+    {
+      "id": "blast-aluminium-vs-magnesium",
+      "label": "different",
+      "a": "How long may an abrasive blast stream stay on one spot of an aluminium skin?",
+      "b": "How long may an abrasive blast stream stay on one spot of a magnesium skin?",
+      "note": "different material"
+    },
+    {
+      "id": "titanium-vs-aluminium-colour",
+      "label": "different",
+      "a": "Why does heated titanium change colour, and should the coloured film be removed?",
+      "b": "Why does heated aluminium change colour, and should the coloured film be removed?",
+      "note": "different material"
+    },
+    {
+      "id": "battery-leadacid-vs-nicad-electrolyte",
+      "label": "different",
+      "a": "How do I neutralise spilled electrolyte from a lead-acid battery?",
+      "b": "How do I neutralise spilled electrolyte from a nickel-cadmium battery?",
+      "note": "different chemistry, opposite neutraliser"
+    },
+    {
+      "id": "magnetic-particle-vs-penetrant",
+      "label": "different",
+      "a": "Which materials can be checked with magnetic particle inspection?",
+      "b": "Which materials can be checked with liquid penetrant inspection?",
+      "note": "different method, same NDI chapter"
+    },
+    {
+      "id": "oxygen-secure-vs-store",
+      "label": "different",
+      "a": "How should oxygen and fuel gas cylinders be secured in a welding area?",
+      "b": "How far apart must oxygen and fuel gas cylinders be stored?",
+      "note": "related but a different requirement"
+    },
+    {
+      "id": "fuel-tank-weld-before-after",
+      "label": "different",
+      "a": "What has to be done to a metal fuel tank before it is welded?",
+      "b": "What has to be done to a metal fuel tank after it is welded?",
+      "note": "before/after: the guard should catch it"
+    },
+    {
+      "id": "cable-install-vs-remove",
+      "label": "different",
+      "a": "What should be checked when a control cable is installed?",
+      "b": "What should be checked when a control cable is removed?",
+      "note": "installed/removed: the guard should catch it (inflected forms)"
+    },
+    {
+      "id": "torque-table-sizes",
+      "label": "different",
+      "a": "What torque should a 10-32 fine thread bolt get when the manufacturer gives none?",
+      "b": "What torque should a 1/4-28 fine thread bolt get when the manufacturer gives none?",
+      "note": "different size in the same table: the guard should catch it"
+    },
+    {
+      "id": "torque-table-sizes-words",
+      "label": "different",
+      "a": "What torque should a quarter-inch fine thread bolt get when the manufacturer gives none?",
+      "b": "What torque should a three-eighths-inch fine thread bolt get when the manufacturer gives none?",
+      "note": "sizes spelled in words: the guard should catch it (number words; measured 0.96 similar with the same passages before it did)"
+    }
+  ]
+}

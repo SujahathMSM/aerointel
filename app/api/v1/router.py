@@ -16,6 +16,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import (
+    AnswerCacheDep,
     IdempotencyKeyDep,
     IdempotencyStoreDep,
     OllamaDep,
@@ -48,8 +49,10 @@ from app.schemas.search import SearchRequest, SearchResponse
 from app.services.documents import ingest_pdf
 from app.services.generation import (
     answer_question,
+    lookup_cached_answer,
     prepare_answer,
     refusal_message,
+    remember_answer,
     stream_answer,
     verify_prepared,
 )
@@ -117,9 +120,16 @@ def _to_retrieved(chunk, distance: float) -> RetrievedChunk:
     response_model=QueryResponse,
     dependencies=[Depends(require_scope(SCOPE_QUERY))],
 )
-async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
+async def query(
+    body: QueryRequest,
+    session: SessionDep,
+    ollama: OllamaDep,
+    cache: AnswerCacheDep = None,
+):
     """Grounded answer with [n] citations, or a structural refusal."""
-    result = await answer_question(session, ollama, body.question, body.top_k)
+    result = await answer_question(
+        session, ollama, body.question, body.top_k, cache=cache
+    )
 
     if result.refused:
         return QueryResponse(
@@ -144,6 +154,7 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
         chunks_used=len(result.chunks),
         answer_chars=len(result.answer or ""),
         prompt_version=result.prompt_version,
+        cached=result.cached,
     )
     return QueryResponse(
         question=result.question,
@@ -155,6 +166,7 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
         unknown_terms=result.unknown_terms,
         verification=_verification_out(result.verification),
         answer_check=result.answer_check,
+        cached=result.cached,
     )
 
 
@@ -163,7 +175,12 @@ async def query(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
     dependencies=[Depends(require_scope(SCOPE_QUERY))],
     responses={200: {"content": {"text/event-stream": {}}}},
 )
-async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDep):
+async def query_stream(
+    body: QueryRequest,
+    session: SessionDep,
+    ollama: OllamaDep,
+    cache: AnswerCacheDep = None,
+):
     """Same grounded answer as /v1/query, delivered as Server-Sent Events.
 
     Retrieval and the refusal gate run *before* the response starts, so a
@@ -186,9 +203,13 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
     answer. (With ANSWER_CHECK=refuse it may have been asked the yes/no check,
     which is what refused it. A figure-check withhold is decided after
     generation and so cannot happen on the stream: see `verification`.)
+
+    An answer from the semantic cache (`meta.cached` true) arrives as a single
+    `token` event holding the whole text; the rest of the stream is the same.
     """
     settings = get_settings()
     prepared = await prepare_answer(session, ollama, body.question, body.top_k)
+    hit = await lookup_cached_answer(cache, ollama, prepared)
 
     meta = QueryResponse(
         question=prepared.question,
@@ -204,6 +225,7 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
         prompt_version=prepared.prompt_version,
         model=None if prepared.refused else _model_name(ollama),
         answer_check=prepared.answer_check,
+        cached=hit is not None,
     ).model_dump(exclude={"answer", "verification"})
 
     async def events() -> AsyncIterator[str]:
@@ -217,20 +239,32 @@ async def query_stream(body: QueryRequest, session: SessionDep, ollama: OllamaDe
                 yield format_event("done", {"refused": True, "answer_chars": 0})
                 return
             pieces: list[str] = []
-            async with aclosing(stream_answer(ollama, prepared)) as tokens:
-                async for piece in tokens:
-                    chars += len(piece)
-                    pieces.append(piece)
-                    yield format_event("token", {"text": piece})
-            outcome = "completed"
+            if hit is not None:
+                chars = len(hit.answer)
+                pieces.append(hit.answer)
+                yield format_event("token", {"text": hit.answer})
+            else:
+                async with aclosing(stream_answer(ollama, prepared)) as tokens:
+                    async for piece in tokens:
+                        chars += len(piece)
+                        pieces.append(piece)
+                        yield format_event("token", {"text": piece})
+            outcome = "cached" if hit is not None else "completed"
+            answer = "".join(pieces)
             # The text is already on the wire, so a failed check cannot withdraw
             # it; the client is told, and in "block" mode must discard it.
-            verification = verify_prepared(prepared, "".join(pieces))
+            verification = verify_prepared(prepared, answer)
             if verification and (verification.checked or verification.bad_citations):
                 blocked = not verification.ok and settings.verify_mode == "block"
                 out = _verification_out(verification, blocked=blocked)
                 assert out is not None
                 yield format_event("verification", out.model_dump())
+            if hit is None:
+                # Only a stream that ran to the end is stored: a cut-off one
+                # never gets here. Shielded so a disconnect cannot half-write it.
+                await asyncio.shield(
+                    remember_answer(cache, ollama, prepared, answer, verification)
+                )
             yield format_event("done", {"refused": False, "answer_chars": chars})
         except (asyncio.CancelledError, GeneratorExit):
             outcome = "client_disconnected"

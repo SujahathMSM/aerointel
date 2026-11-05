@@ -32,7 +32,12 @@ async def search_chunks(
     ollama: OllamaClient,
     query: str,
     top_k: int = 5,
+    query_embedding: list[float] | None = None,
 ) -> list[tuple]:
-    """Embed the query, return (chunk, distance) closest-first via pgvector."""
-    (query_embedding,) = await ollama.embed([query])
+    """Embed the query, return (chunk, distance) closest-first via pgvector.
+
+    `query_embedding`: the query's vector if the caller already has it.
+    """
+    if query_embedding is None:
+        (query_embedding,) = await ollama.embed([query])
     return await vector_search(session, query_embedding, top_k)

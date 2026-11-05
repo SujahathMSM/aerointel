@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AeroIntel is an aviation-maintenance RAG service, built stage by stage with each
 stage proven by its own tests before the next starts. Phase 1 (hybrid
 retrieval + eval harness) is closed. Phase 2 is in progress: Redis rate limiting,
-JWT auth (scopes `query`/`ingest`), idempotency keys on `/v1/ingest` and SSE
-streaming (`/v1/query/stream`) are done; the semantic cache is not started. PDF
+JWT auth (scopes `query`/`ingest`), idempotency keys on `/v1/ingest`, SSE
+streaming (`/v1/query/stream`) and the semantic answer cache (off by default) are done. PDF
 ingestion with page citations (a Phase 4 item) was pulled forward and exists. Nothing
 else from Phase 3 on is built (event-driven ingestion, k8s deploy, observability).
 See the Status table and Roadmap in `README.md` for the full plan — don't reimplement
@@ -51,6 +51,7 @@ python -m evals.run_eval --retriever hybrid --reranker crossencoder --faithfulne
 python -m evals.doc_eval [--retriever hybrid] [--neighbors 1] [--show ID|all]   # real documents, scored by page (needs the FAA manual ingested)
 python scripts/ingest_pdfs.py data/aviation [--dry-run] [--replace]   # ingest PDFs; --replace re-chunks stored ones
 python -m evals.live_eval [--retriever hybrid] [--check-only] [--save F]   # trust layer on the live model (needs Ollama)
+python -m evals.cache_eval [--no-retrieval] [--save F]   # answer-cache threshold: wrong/right reuses on labelled pairs (needs Ollama)
 
 # Embedding version migration (rows are tagged with embedding_model; never silently mix models)
 python scripts/backfill_embeddings.py --dry-run
@@ -110,6 +111,23 @@ bound to a fingerprint of the request body; a failed or cancelled request
 releases its claim (token-checked, shielded from cancellation). Unlike rate
 limiting this **fails closed**: a request that sent a key gets 503 if Redis is
 down, because a key means "exactly once". Requests without a key are unaffected.
+
+Answer cache: `app/core/answer_cache.py` (`ANSWER_CACHE_ENABLED`, off by default)
+reuses a written answer and replaces *only* the answer-writing model call.
+`generation.lookup_cached_answer()` runs after `prepare_answer()`, i.e. after every
+gate, so a refusal can never be served from cache and refusals are never stored.
+Entries are bucketed by `generation.cache_bucket()` — a hash of the exact context
+text and order, system prompt, model, temperature, `num_ctx` and embedding model —
+so a corpus/prompt/model change is a new bucket, not a stale hit. Within a bucket a
+hit needs cosine similarity >= `ANSWER_CACHE_MIN_SIMILARITY` *and* the same guard
+words (`question_guard()`: numbers/identifiers, also spelled out, negations,
+min/max-type qualifiers). The figure check re-runs on a hit; a flagged answer is never stored.
+Fails open on Redis errors (miss/skip + circuit breaker). Choose the threshold with
+`evals.cache_eval` (`evals/cache_pairs.json`); wrong reuses must be 0. Measured: safe at
+0.97 (down to 0.921), but paraphrases mostly retrieve partly different passages, so
+it mostly serves repeated questions; don't relax the identical-context rule. With the cache on,
+`prepare_answer()` embeds the question once and passes `query_embedding` down to
+`retrieve()`, so it costs no extra Ollama call.
 
 Streaming: `POST /v1/query/stream` calls `services/generation.py:prepare_answer()`
 (retrieval + distance gate + prompt, DB session committed) *before* the response

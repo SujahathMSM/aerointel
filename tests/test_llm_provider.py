@@ -72,7 +72,7 @@ class _Llm:
 
 
 async def test_an_answer_names_the_model_that_wrote_it(monkeypatch):
-    async def fake_answer(session, llm, question, top_k=None):
+    async def fake_answer(session, llm, question, top_k=None, cache=None):
         return generation.AnswerResult(
             question=question,
             refused=False,
@@ -87,7 +87,7 @@ async def test_an_answer_names_the_model_that_wrote_it(monkeypatch):
 
 
 async def test_a_refusal_names_no_model(monkeypatch):
-    async def fake_answer(session, llm, question, top_k=None):
+    async def fake_answer(session, llm, question, top_k=None, cache=None):
         return generation.AnswerResult(
             question=question, refused=True, refusal_reason="too_far"
         )

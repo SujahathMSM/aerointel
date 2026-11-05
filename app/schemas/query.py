@@ -57,3 +57,6 @@ class QueryResponse(BaseModel):
     # The model's own judgement, before answering, of whether the passages
     # answer the question: "yes", "no" or "unclear". None when ANSWER_CHECK=off.
     answer_check: str | None = None
+    # The answer was reused from the semantic cache: written earlier for an
+    # equivalent question over these exact passages, not by a new model call.
+    cached: bool = False
