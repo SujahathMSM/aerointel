@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.v1.router import router as v1_router
+from app.core.answer_cache import create_answer_cache
 from app.core.auth import validate_auth_settings
 from app.core.config import get_settings
 from app.core.idempotency import create_idempotency_store
@@ -41,7 +42,13 @@ async def lifespan(app: FastAPI):
     app.state.idempotency = (
         create_idempotency_store(settings) if settings.idempotency_enabled else None
     )
+    # None = answer cache switched off; every answered question calls the model.
+    app.state.answer_cache = (
+        create_answer_cache(settings) if settings.answer_cache_enabled else None
+    )
     yield
+    if app.state.answer_cache is not None:
+        await app.state.answer_cache.close()
     if app.state.idempotency is not None:
         await app.state.idempotency.close()
     if app.state.rate_limiter is not None:

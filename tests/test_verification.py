@@ -260,7 +260,7 @@ def test_the_settings_default_to_flagging_and_not_refusing():
 async def test_query_response_carries_the_verification(client, monkeypatch):
     verification = Verification(checked=2, cited=[1], unsupported=["900 °F"])
 
-    async def fake_answer(session, ollama, question, top_k=None):
+    async def fake_answer(session, ollama, question, top_k=None, cache=None):
         return AnswerResult(
             question=question,
             refused=False,
@@ -291,7 +291,7 @@ async def test_query_response_carries_the_verification(client, monkeypatch):
 async def test_a_withheld_answer_is_a_refusal_with_its_reason(client, monkeypatch):
     verification = Verification(checked=1, unsupported=["900 °F"])
 
-    async def fake_answer(session, ollama, question, top_k=None):
+    async def fake_answer(session, ollama, question, top_k=None, cache=None):
         return AnswerResult(
             question=question,
             refused=True,

@@ -44,7 +44,7 @@ are caught by reading the passages, not by distance. See
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | Postgres full-text keyword search + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic response cache still to do | 🚧 in progress |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic answer cache ✅ (off by default; similarity threshold still to measure on the live model) | ✅ built |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback, paragraph-aware chunking) · page-scored eval on a 35-question FAA golden set ✅ · reading limit past the gate ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
 | Trust layer | Figure check against cited passages ✅ · unknown-word check ✅ · answer check ("do these passages answer it?") ✅ · local or Anthropic model for answers, measured side by side ✅ · warnings, revision awareness still to do | 🚧 in progress |
@@ -137,6 +137,7 @@ flowchart TB
     api --> idem["Idempotency keys"]
     rl --> redis[("Redis")]
     idem --> redis
+    svc -. "ANSWER_CACHE_ENABLED" .-> redis
     api --> svc["services/<br/>retrieval · hybrid · generation<br/>verification · answerability · documents"]
     svc --> db[("Postgres 18 + pgvector<br/>documents · chunks · tsvector")]
     svc --> llm["llm/<br/>timeout · retry · circuit breaker"]
@@ -176,6 +177,7 @@ app/
     logging.py           structlog JSON logs, RequestIdMiddleware
     resilience.py         retry() with backoff, CircuitBreaker
     rate_limit.py          Redis token bucket (Lua), fail-open/closed on Redis outage
+    answer_cache.py        semantic answer cache (Redis), fail-open on Redis outage
   api/
     deps.py              FastAPI dependencies (DB session, Ollama client, rate limit)
     health.py             /health/live, /health/ready
@@ -327,6 +329,53 @@ asserts one insert). Each claim carries a random token and is released by a Lua
 script that checks it, so a slow request can't delete the claim of whoever took
 the key after it. The release is shielded from cancellation, because a client
 hanging up cancels the request mid-work.
+
+### Semantic answer cache (Phase 2)
+
+Writing the answer is the slow (local GPU) or paid (Anthropic) part of a query;
+retrieval and the gates are cheap. With `ANSWER_CACHE_ENABLED=true`, an answer
+is reused for a later question that means the same thing — but only when that
+is safe:
+
+1. **Every gate runs first, for the new question.** Distance, unknown words and
+   the answer check all happen before the cache is consulted, so a refused
+   question never reaches it and the cache cannot turn a refusal into an answer.
+   Refusals are never stored.
+2. **The context must be identical.** The cache is split into buckets by a hash
+   of everything except the question that shapes the answer: the passages the
+   model would read (text and order, so every `[n]` points at the same passage),
+   the system prompt, the answering model, temperature, context window and the
+   embedding model. New documents, `ingest_pdfs.py --replace`, a new prompt
+   version or a model switch all land in a new bucket — nothing needs flushing;
+   old buckets expire after the TTL.
+3. **The questions must mean the same thing.** Within a bucket, the two
+   questions' embeddings must have cosine similarity ≥
+   `ANSWER_CACHE_MIN_SIMILARITY` (a repeated question always matches), **and**
+   they must agree on the words embeddings blur: numbers and identifiers
+   (`10-32` vs `1/4-28`, `AN960` vs `AN970`), negations (`not`, `never`,
+   `without`), and limits/directions (`minimum`/`maximum`, `before`/`after`,
+   `install`/`remove`, …). "Torque for a 10-32 bolt" never reuses the answer
+   for a 1/4-28 bolt, even though both retrieve the same torque table.
+
+On a hit the figure check runs again against the new question (so
+`VERIFY_MODE=block` still withholds), and the response says `"cached": true`
+(on the stream: `meta.cached`, then the whole answer as one `token` event). An
+answer the figure check flagged is still returned to its own caller but is never
+stored for anyone else. Answers written by `/v1/query` and `/v1/query/stream`
+share one cache. Redis keeps no question text: an entry is a hash of the
+normalised question, a hash of its guard words, its embedding and the answer.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `ANSWER_CACHE_ENABLED` | `false` | `true` turns the cache on (one Redis list per bucket). |
+| `ANSWER_CACHE_MIN_SIMILARITY` | `0.97` | Cosine similarity two questions' embeddings need, 0–1. Deliberately strict; measure on real paraphrases before lowering it. |
+| `ANSWER_CACHE_TTL_SECONDS` | `86400` | How long a bucket lives after its last new answer. |
+| `ANSWER_CACHE_MAX_ENTRIES` | `20` | Answers kept per bucket, newest first. |
+
+Redis down: lookups are misses and stores are skipped (logged), behind a 0.5 s
+timeout and a circuit breaker — the cache is an optimisation, never a dependency,
+so it fails open like rate limiting. With the cache on, the question is embedded
+once and that vector is used by retrieval too, so the cache adds no model call.
 
 ### Streaming answers (Phase 2)
 

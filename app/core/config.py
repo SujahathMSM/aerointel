@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -147,6 +147,20 @@ class Settings(BaseSettings):
     idempotency_ttl_seconds: int = 86400
     idempotency_lock_seconds: int = 150
     idempotency_key_prefix: str = "idempotency"
+
+    # Semantic answer cache (Phase 2): reuse a generated answer for a question
+    # that means the same thing. It sits after every gate and replaces only the
+    # answer-writing model call, and a hit needs the *identical* context (same
+    # passages, order, prompt, model), so it can never answer a refused question
+    # or cite passages the new question did not retrieve. Off by default like the
+    # other switches. `min_similarity` is cosine similarity of the two questions'
+    # embeddings (1.0 = same text); a repeat question always hits.
+    answer_cache_enabled: bool = False
+    answer_cache_min_similarity: float = Field(default=0.97, ge=0.0, le=1.0)
+    answer_cache_ttl_seconds: int = 86400
+    # Answers kept per distinct context (newest first); older ones drop off.
+    answer_cache_max_entries: int = Field(default=20, ge=1)
+    answer_cache_key_prefix: str = "answercache"
 
     # Document ingestion (PDF upload -> text -> chunks -> embeddings).
     # Largest upload POST /v1/documents accepts, in megabytes.

@@ -1,8 +1,11 @@
+import hashlib
+import json
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.answer_cache import AnswerCache, CacheHit
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.llm.ollama import OllamaClient
@@ -102,6 +105,8 @@ class AnswerResult:
     verification: Verification | None = None
     # The model's own yes/no on "does the context answer this?" (None when off).
     answer_check: str | None = None
+    # The answer came from the semantic cache, not a new model call.
+    cached: bool = False
 
 
 @dataclass
@@ -123,6 +128,8 @@ class PreparedAnswer:
     refusal_reason: str | None = None
     unknown_terms: list[str] = field(default_factory=list)
     answer_check: str | None = None
+    # The question's embedding, kept for the answer cache (None when it is off).
+    query_embedding: list[float] | None = None
 
 
 def _where(chunk) -> str:
@@ -236,14 +243,18 @@ def context_block(chunk) -> str:
     return f"Source: {source}{_where(chunk)}\n{chunk.content}"
 
 
-def build_prompt(question: str, chunks: list[tuple]) -> str:
-    """Numbered CONTEXT blocks; block number == citation number."""
+def build_context(chunks: list[tuple]) -> str:
+    """The numbered CONTEXT blocks alone; block number == citation number."""
     blocks = [
         f"[{rank}] {context_block(chunk)}"
         for rank, (chunk, _distance) in enumerate(chunks, start=1)
     ]
+    return "\n\n---\n\n".join(blocks)
 
-    context = "\n\n---\n\n".join(blocks)
+
+def build_prompt(question: str, chunks: list[tuple]) -> str:
+    """Numbered CONTEXT blocks, then the question."""
+    context = build_context(chunks)
     return f"CONTEXT:\n\n{context}\n\n---\n\nQUESTION: {question}\n\nANSWER:"
 
 
@@ -266,7 +277,15 @@ async def prepare_answer(
     settings = get_settings()
     top_k = top_k or settings.top_k
 
-    retrieved = await retrieve(session, ollama, question, top_k)
+    # With the answer cache on, the question is embedded here, once: retrieval
+    # uses the vector, and the cache compares it with earlier questions'.
+    query_embedding: list[float] | None = None
+    if settings.answer_cache_enabled:
+        (query_embedding,) = await ollama.embed([question])
+
+    retrieved = await retrieve(
+        session, ollama, question, top_k, query_embedding=query_embedding
+    )
 
     relevant = select_context(
         retrieved, settings.max_distance, settings.context_max_distance
@@ -339,6 +358,74 @@ async def prepare_answer(
         prompt_version=active.version,
         unknown_terms=unknown_terms,
         answer_check=answer_check,
+        query_embedding=query_embedding,
+    )
+
+
+def cache_bucket(prepared: PreparedAnswer, llm: OllamaClient) -> str:
+    """Hash of everything besides the question that shapes the answer.
+
+    Two questions share cached answers only within one bucket: the same
+    passages in the same order (so every [n] points at the same text), the
+    same system prompt, the same answering model and generation settings,
+    and the same embedding model (vectors from different models are not
+    comparable). A change to any of them is a new bucket, never a stale hit.
+    """
+    settings = get_settings()
+    material = {
+        "embedding_model": settings.embedding_model,
+        "client": type(llm).__name__,
+        "model": getattr(llm, "model_name", None),
+        "temperature": settings.temperature,
+        "num_ctx": settings.llm_num_ctx,
+        "max_tokens": settings.anthropic_max_tokens,
+        "system": prepared.system,
+        "context": build_context(prepared.chunks),
+    }
+    canonical = json.dumps(material, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+async def lookup_cached_answer(
+    cache: AnswerCache | None, llm: OllamaClient, prepared: PreparedAnswer
+) -> CacheHit | None:
+    """A stored answer for this exact context and an equivalent question."""
+    if cache is None or prepared.refused or prepared.query_embedding is None:
+        return None
+    hit = await cache.lookup(
+        cache_bucket(prepared, llm), prepared.question, prepared.query_embedding
+    )
+    if hit is not None:
+        logger.info(
+            "answer cache hit",
+            similarity=round(hit.similarity, 4),
+            age_seconds=round(hit.age_seconds),
+        )
+    return hit
+
+
+async def remember_answer(
+    cache: AnswerCache | None,
+    llm: OllamaClient,
+    prepared: PreparedAnswer,
+    answer: str,
+    verification: Verification | None,
+) -> None:
+    """Store a freshly written answer, unless the figure check flagged it.
+
+    A flagged answer is still returned to its own caller, but it is not
+    handed to anyone else: the next caller gets a new attempt instead.
+    """
+    if cache is None or prepared.refused or prepared.query_embedding is None:
+        return
+    if not answer.strip() or (verification is not None and not verification.ok):
+        return
+    await cache.store(
+        cache_bucket(prepared, llm),
+        prepared.question,
+        prepared.query_embedding,
+        answer,
+        prepared.prompt_version,
     )
 
 
@@ -355,11 +442,13 @@ async def answer_question(
     ollama: OllamaClient,
     question: str,
     top_k: int | None = None,
+    cache: AnswerCache | None = None,
 ) -> AnswerResult:
     """Retrieve, gate by distance ceiling, then generate — or refuse.
 
     The refusal is structural: if nothing clears MAX_DISTANCE, the LLM
-    is never called.
+    is never called. `cache`: the semantic answer cache; it is consulted only
+    after every gate, so it can replace the answer-writing call, never a gate.
     """
     prepared = await prepare_answer(session, ollama, question, top_k)
     if prepared.refused:
@@ -373,8 +462,15 @@ async def answer_question(
         )
 
     assert prepared.system is not None and prepared.prompt is not None
-    answer = await ollama.chat(prepared.system, prepared.prompt)
+    hit = await lookup_cached_answer(cache, ollama, prepared)
+    if hit is not None:
+        answer = hit.answer
+    else:
+        answer = await ollama.chat(prepared.system, prepared.prompt)
+    # Re-checked on a hit too: the figure check reads the question as well.
     verification = verify_prepared(prepared, answer)
+    if hit is None:
+        await remember_answer(cache, ollama, prepared, answer, verification)
     if (
         verification is not None
         and not verification.ok
@@ -394,6 +490,7 @@ async def answer_question(
             unknown_terms=prepared.unknown_terms,
             verification=verification,
             answer_check=prepared.answer_check,
+            cached=hit is not None,
         )
     return AnswerResult(
         question=question,
@@ -404,6 +501,7 @@ async def answer_question(
         unknown_terms=prepared.unknown_terms,
         verification=verification,
         answer_check=prepared.answer_check,
+        cached=hit is not None,
     )
 
 
