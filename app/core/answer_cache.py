@@ -57,7 +57,9 @@ _NEGATIONS = frozenset({"not", "no", "never", "without", "except", "cannot", "no
 # Numbers written as words are numbers too: "a quarter-inch bolt" and "a
 # three-eighths-inch bolt" retrieve the same torque table at similarity 0.96
 # (evals.cache_eval). Cardinals become digits, so "two" matches "2"; fraction
-# words keep one singular form ("three-eighths" -> "3" + "eighth").
+# words keep one singular form ("three-eighths" -> "3" + "eighth"). "one" is
+# left out: it is a pronoun as often as a number ("replaced with an unvented
+# one" lost a correct reuse), and "one bolt" vs "two bolts" still differ on "2".
 _CARDINALS = {
     word: str(value)
     for value, word in enumerate(
@@ -85,6 +87,7 @@ _CARDINALS = {
             "twenty",
         ]
     )
+    if word != "one"
 } | {
     "thirty": "30",
     "forty": "40",

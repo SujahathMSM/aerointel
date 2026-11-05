@@ -164,6 +164,9 @@ def test_numbers_spelled_as_words_are_guard_words():
     assert question_guard("two rows of rivets") == question_guard("2 rows of rivets")
     assert question_guard("three eighths") == question_guard("three-eighths")
     assert question_guard("one third") != question_guard("one fourth")
+    # "one" is a pronoun too often to count
+    assert question_guard("replaced with an unvented one") == ()
+    assert question_guard("one bolt") != question_guard("two bolts")
 
 
 def test_negations_and_limits_are_guard_words():

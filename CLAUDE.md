@@ -123,7 +123,9 @@ hit needs cosine similarity >= `ANSWER_CACHE_MIN_SIMILARITY` *and* the same guar
 words (`question_guard()`: numbers/identifiers, also spelled out, negations,
 min/max-type qualifiers). The figure check re-runs on a hit; a flagged answer is never stored.
 Fails open on Redis errors (miss/skip + circuit breaker). Choose the threshold with
-`evals.cache_eval` (`evals/cache_pairs.json`); wrong reuses must be 0. With the cache on,
+`evals.cache_eval` (`evals/cache_pairs.json`); wrong reuses must be 0. Measured: safe at
+0.97 (down to 0.921), but paraphrases mostly retrieve partly different passages, so
+it mostly serves repeated questions; don't relax the identical-context rule. With the cache on,
 `prepare_answer()` embeds the question once and passes `query_embedding` down to
 `retrieve()`, so it costs no extra Ollama call.
 

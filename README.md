@@ -44,7 +44,7 @@ are caught by reading the passages, not by distance. See
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | Postgres full-text keyword search + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic answer cache ✅ (off by default; similarity threshold still to measure on the live model) | ✅ built |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic answer cache ✅ (off by default; measured: 0 wrong reuses at 0.97, but paraphrases rarely retrieve identical passages, so in practice it serves repeated questions) | ✅ built |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback, paragraph-aware chunking) · page-scored eval on a 35-question FAA golden set ✅ · reading limit past the gate ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
 | Trust layer | Figure check against cited passages ✅ · unknown-word check ✅ · answer check ("do these passages answer it?") ✅ · local or Anthropic model for answers, measured side by side ✅ · warnings, revision awareness still to do | 🚧 in progress |
@@ -400,6 +400,25 @@ passages in another order, partly shared, none shared) and repeats the table
 "if reordered", i.e. as if a cached answer's `[n]` citations were renumbered to
 fit the same passages in another order. CI checks the pair file and the guard-word expectations
 written in it (`tests/test_cache_eval.py`) without a model.
+
+**Measured** (2026-11-05, EmbeddingGemma, hybrid retrieval, `top_k=5`, 35 pairs;
+`evals/results/cache.json`, `cache_v2.json`):
+
+| | Result |
+|---|---|
+| Wrong reuses at 0.97 | **0 of 16** "different" pairs (4 more are refused, so never reach the cache) |
+| Lowest safe threshold | 0.921: the closest exposed "different" pair is edge distance vs spacing for a row of rivets (0.911, identical passages) |
+| Caught by the guard words | 5 "different" pairs, e.g. torque for a "quarter-inch" vs a "three-eighths-inch" bolt: identical passages at 0.960, so before number words were guard words only the threshold held it (safe threshold was then exactly 0.97) |
+| Right reuses of a reworded question | **0 of 13** at 0.97; at most 2 at any safe threshold |
+| Why so few | 11 of 13 reworded questions retrieve *partly different* passages, so they never share a bucket; 2 retrieve identical ones. Even a change of case and punctuation alone retrieves differently (similarity 0.957). |
+| Renumbering citations for reordered passages | Not built: no reworded pair retrieved the same passages in another order, and it would add a wrong reuse (safety wire for large vs small holes, 0.959) |
+
+So on this manual the cache in practice answers **repeated questions** (and the
+occasional rewording that happens to retrieve the same passages) without a model
+call. Reusing across partly different passages would let an answer cite passages
+the new question did not retrieve, which the figure check could no longer verify,
+so the identical-context rule stays. The threshold stays at 0.97: lowering it to
+about 0.93 would gain at most one reuse for a much thinner margin.
 
 ### Streaming answers (Phase 2)
 
