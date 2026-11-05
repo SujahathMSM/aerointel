@@ -95,6 +95,18 @@ class FakeSession:
     async def commit(self):
         self.events.append("commit")
 
+    async def execute(self, statement):
+        # The warning lookback reads neighbouring chunks; this store has none.
+        return _NoRows()
+
+
+class _NoRows:
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
 
 @pytest.fixture
 def settings(monkeypatch):

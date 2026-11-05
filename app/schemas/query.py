@@ -18,6 +18,22 @@ class RetrievedChunk(BaseModel):
     page_label: str | None = None
 
 
+class WarningOut(BaseModel):
+    """WARNING / CAUTION / NOTE text from a passage, copied word for word."""
+
+    level: str  # "WARNING", "CAUTION" or "NOTE", most severe first
+    text: str  # verbatim, without the label
+    # [n] of the context block it is in; None when it was found at the start
+    # of the paragraph that block belongs to (source "paragraph_start").
+    block: int | None = None
+    source: str  # "block" | "paragraph_start"
+    page: int | None = None
+    page_label: str | None = None
+    # The answer cites its block (or the block its paragraph leads into).
+    # Always false on the stream's `meta`, sent before the answer exists.
+    cited: bool = False
+
+
 class VerificationOut(BaseModel):
     """Numbers in the answer checked against the passages it cites."""
 
@@ -57,6 +73,9 @@ class QueryResponse(BaseModel):
     # The model's own judgement, before answering, of whether the passages
     # answer the question: "yes", "no" or "unclear". None when ANSWER_CHECK=off.
     answer_check: str | None = None
+    # Safety labels from the passages the model read, never dropped and never
+    # chosen by the model. Empty on a refusal.
+    warnings: list[WarningOut] = []
     # The answer was reused from the semantic cache: written earlier for an
     # equivalent question over these exact passages, not by a new model call.
     cached: bool = False

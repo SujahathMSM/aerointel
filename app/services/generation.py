@@ -13,7 +13,8 @@ from app.prompts import Prompt, get_prompt
 from app.services.answerability import check_answerability
 from app.services.context import expand_with_neighbours
 from app.services.pipeline import retrieve
-from app.services.verification import Verification, verify_answer
+from app.services.verification import Verification, parse_citations, verify_answer
+from app.services.warnings import SafetyWarning, find_warnings, mark_cited
 
 logger = get_logger(__name__)
 
@@ -107,6 +108,9 @@ class AnswerResult:
     answer_check: str | None = None
     # The answer came from the semantic cache, not a new model call.
     cached: bool = False
+    # WARNING / CAUTION / NOTE text from the passages read (never on a refusal
+    # by the gates or the answer check), cited blocks first within a level.
+    warnings: list[SafetyWarning] = field(default_factory=list)
 
 
 @dataclass
@@ -130,6 +134,8 @@ class PreparedAnswer:
     answer_check: str | None = None
     # The question's embedding, kept for the answer cache (None when it is off).
     query_embedding: list[float] | None = None
+    # Safety labels in the passages the model reads (empty on a refusal).
+    warnings: list[SafetyWarning] = field(default_factory=list)
 
 
 def _where(chunk) -> str:
@@ -320,6 +326,15 @@ async def prepare_answer(
             session, relevant, settings.context_neighbors, settings.context_max_chunks
         )
 
+    # Safety labels in exactly what the model will read (plus the start of each
+    # passage's paragraph), found by code so the model cannot leave them out.
+    # Before the commit: the paragraph lookback reads neighbouring chunks.
+    warnings: list[SafetyWarning] = []
+    if relevant:
+        warnings = await find_warnings(
+            session, relevant, settings.warning_lookback_chunks
+        )
+
     await session.commit()
 
     if not relevant:
@@ -359,6 +374,7 @@ async def prepare_answer(
         unknown_terms=unknown_terms,
         answer_check=answer_check,
         query_embedding=query_embedding,
+        warnings=warnings,
     )
 
 
@@ -471,6 +487,7 @@ async def answer_question(
     verification = verify_prepared(prepared, answer)
     if hit is None:
         await remember_answer(cache, ollama, prepared, answer, verification)
+    warnings = mark_cited(prepared.warnings, parse_citations(answer))
     if (
         verification is not None
         and not verification.ok
@@ -491,6 +508,9 @@ async def answer_question(
             verification=verification,
             answer_check=prepared.answer_check,
             cached=hit is not None,
+            # The reader is sent to the passages themselves: their safety text
+            # goes with them.
+            warnings=warnings,
         )
     return AnswerResult(
         question=question,
@@ -502,6 +522,7 @@ async def answer_question(
         verification=verification,
         answer_check=prepared.answer_check,
         cached=hit is not None,
+        warnings=warnings,
     )
 
 

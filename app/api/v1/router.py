@@ -44,6 +44,7 @@ from app.schemas.query import (
     QueryResponse,
     RetrievedChunk,
     VerificationOut,
+    WarningOut,
 )
 from app.schemas.search import SearchRequest, SearchResponse
 from app.services.documents import ingest_pdf
@@ -60,6 +61,7 @@ from app.services.ingestion import ingest_chunk
 from app.services.pdf_text import PdfError
 from app.services.pipeline import retrieve
 from app.services.verification import Verification
+from app.services.warnings import SafetyWarning
 
 # Every /v1 route first proves who is calling (401 if not), then spends a
 # rate-limit token from that caller's bucket; each route then checks its
@@ -89,6 +91,21 @@ def _verification_out(
         found_in_uncited=v.found_in_uncited,
         blocked=blocked,
     )
+
+
+def _warnings_out(warnings: list[SafetyWarning]) -> list[WarningOut]:
+    return [
+        WarningOut(
+            level=w.level,
+            text=w.text,
+            block=w.block,
+            source=w.source,
+            page=w.page,
+            page_label=w.page_label,
+            cited=w.cited,
+        )
+        for w in warnings
+    ]
 
 
 def _refusal_text(reason, unknown_terms, verification) -> str:
@@ -146,6 +163,7 @@ async def query(
             if result.verification
             else None,
             answer_check=result.answer_check,
+            warnings=_warnings_out(result.warnings),
         )
 
     logger.info(
@@ -155,6 +173,7 @@ async def query(
         answer_chars=len(result.answer or ""),
         prompt_version=result.prompt_version,
         cached=result.cached,
+        warnings=len(result.warnings),
     )
     return QueryResponse(
         question=result.question,
@@ -167,6 +186,7 @@ async def query(
         verification=_verification_out(result.verification),
         answer_check=result.answer_check,
         cached=result.cached,
+        warnings=_warnings_out(result.warnings),
     )
 
 
@@ -189,7 +209,9 @@ async def query_stream(
 
     - `meta`  -- question, refused, refusal_reason, refusal_message,
                  unknown_terms, answer_check, chunks (the sources),
-                 prompt_version, model (who writes the answer). Always first.
+                 prompt_version, model (who writes the answer), warnings
+                 (WARNING / CAUTION / NOTE text from the passages; `cited` is
+                 always false here, the answer does not exist yet). Always first.
     - `token` -- `{"text": "..."}`, repeated; concatenate to build the answer.
     - `verification` -- only when the answer contained figures or citations to
                  check: the same object as `/v1/query`'s `verification`. The text
@@ -226,6 +248,7 @@ async def query_stream(
         model=None if prepared.refused else _model_name(ollama),
         answer_check=prepared.answer_check,
         cached=hit is not None,
+        warnings=_warnings_out(prepared.warnings),
     ).model_dump(exclude={"answer", "verification"})
 
     async def events() -> AsyncIterator[str]:
