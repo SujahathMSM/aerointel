@@ -13,7 +13,9 @@ from app.prompts import Prompt, get_prompt
 from app.services.answerability import check_answerability
 from app.services.context import expand_with_neighbours
 from app.services.pipeline import retrieve
-from app.services.verification import Verification, verify_answer
+from app.services.revisions import SourceRevision, find_source_revisions
+from app.services.verification import Verification, parse_citations, verify_answer
+from app.services.warnings import SafetyWarning, find_warnings, mark_cited
 
 logger = get_logger(__name__)
 
@@ -107,6 +109,11 @@ class AnswerResult:
     answer_check: str | None = None
     # The answer came from the semantic cache, not a new model call.
     cached: bool = False
+    # WARNING / CAUTION / NOTE text from the passages read (never on a refusal
+    # by the gates or the answer check), cited blocks first within a level.
+    warnings: list[SafetyWarning] = field(default_factory=list)
+    # The documents read: revision, when stored, newer revision / superseded.
+    sources: list[SourceRevision] = field(default_factory=list)
 
 
 @dataclass
@@ -130,15 +137,29 @@ class PreparedAnswer:
     answer_check: str | None = None
     # The question's embedding, kept for the answer cache (None when it is off).
     query_embedding: list[float] | None = None
+    # Safety labels in the passages the model reads (empty on a refusal).
+    warnings: list[SafetyWarning] = field(default_factory=list)
+    # Revision notes for the documents those passages come from.
+    sources: list[SourceRevision] = field(default_factory=list)
 
 
-def _where(chunk) -> str:
-    """', page 3-3 (PDF page 120)' for chunks cut from a PDF; '' otherwise."""
+def _where(chunk, issued: bool = True) -> str:
+    """', page 3-3 (issued 2001-09-27, PDF page 120)' for PDF chunks; '' otherwise.
+
+    The issue date is the one printed in the chunk's own page header (pages of
+    a change-page document carry different issues). `issued=False` leaves it out.
+    """
     page = getattr(chunk, "page", None)
     if page is None:
         return ""
     label = getattr(chunk, "page_label", None)
-    return f", page {label} (PDF page {page})" if label else f", PDF page {page}"
+    issue = (
+        (getattr(chunk, "metadata_", None) or {}).get("page_issued") if issued else None
+    )
+    if label:
+        inner = f"issued {issue}, PDF page {page}" if issue else f"PDF page {page}"
+        return f", page {label} ({inner})"
+    return f", PDF page {page}" + (f" (issued {issue})" if issue else "")
 
 
 def warn_if_prompt_may_not_fit(system: str, prompt: str) -> bool:
@@ -232,15 +253,22 @@ async def check_answerable(
     return parse_answer_check(reply)
 
 
-def context_block(chunk) -> str:
+def context_block(chunk, for_verification: bool = False) -> str:
     """One CONTEXT block as the model sees it: its source line, then the text.
 
-    The figure check reads the same text, so a page the answer copies from the
-    source line ("page 7-9 (PDF page 364)") counts as supported. Without it every
-    page citation was flagged as an unsupported figure.
+    The source names the document's revision when it is known ("AC 43.13-1B
+    CHG 1"), else its title, then the page and that page's issue date.
+
+    The figure check reads the same text (`for_verification=True`), so a page
+    the answer copies from the source line ("page 7-9 (PDF page 364)") counts as
+    supported; without it every page citation was flagged as an unsupported
+    figure. The issue date is left out of that text: "2001-09-27" would make a
+    wrong "27" or "9" in the answer look supported.
     """
-    source = chunk.metadata_.get("source", "unknown")
-    return f"Source: {source}{_where(chunk)}\n{chunk.content}"
+    meta = chunk.metadata_ or {}
+    source = meta.get("revision") or meta.get("source", "unknown")
+    where = _where(chunk, issued=not for_verification)
+    return f"Source: {source}{where}\n{chunk.content}"
 
 
 def build_context(chunks: list[tuple]) -> str:
@@ -320,6 +348,19 @@ async def prepare_answer(
             session, relevant, settings.context_neighbors, settings.context_max_chunks
         )
 
+    # Safety labels in exactly what the model will read (plus the start of each
+    # passage's paragraph), found by code so the model cannot leave them out.
+    # Before the commit: the paragraph lookback reads neighbouring chunks.
+    warnings: list[SafetyWarning] = []
+    sources: list[SourceRevision] = []
+    if relevant:
+        warnings = await find_warnings(
+            session, relevant, settings.warning_lookback_chunks
+        )
+        # Which revision each passage's document is, and whether a newer one
+        # is stored: every answer names its revision.
+        sources = await find_source_revisions(session, relevant)
+
     await session.commit()
 
     if not relevant:
@@ -359,7 +400,12 @@ async def prepare_answer(
         unknown_terms=unknown_terms,
         answer_check=answer_check,
         query_embedding=query_embedding,
+        warnings=warnings,
+        sources=sources,
     )
+
+
+_QUESTION_SLOT = "\x00question\x00"
 
 
 def cache_bucket(prepared: PreparedAnswer, llm: OllamaClient) -> str:
@@ -370,6 +416,11 @@ def cache_bucket(prepared: PreparedAnswer, llm: OllamaClient) -> str:
     same system prompt, the same answering model and generation settings,
     and the same embedding model (vectors from different models are not
     comparable). A change to any of them is a new bucket, never a stale hit.
+
+    The prompt goes in whole, with the question left as a placeholder, so a
+    change to its layout (the source line gaining the revision and issue, the
+    wrapper around the question) also starts a new bucket: an answer written
+    before the model was shown the revision is never served after.
     """
     settings = get_settings()
     material = {
@@ -380,7 +431,7 @@ def cache_bucket(prepared: PreparedAnswer, llm: OllamaClient) -> str:
         "num_ctx": settings.llm_num_ctx,
         "max_tokens": settings.anthropic_max_tokens,
         "system": prepared.system,
-        "context": build_context(prepared.chunks),
+        "prompt": build_prompt(_QUESTION_SLOT, prepared.chunks),
     }
     canonical = json.dumps(material, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -433,7 +484,9 @@ def verify_prepared(prepared: PreparedAnswer, answer: str) -> Verification | Non
     """Check `answer` against the passages that were in its prompt (None if off)."""
     if get_settings().verify_mode == "off":
         return None
-    passages = [context_block(chunk) for chunk, _distance in prepared.chunks]
+    passages = [
+        context_block(chunk, for_verification=True) for chunk, _ in prepared.chunks
+    ]
     return verify_answer(answer, passages, prepared.question)
 
 
@@ -471,6 +524,7 @@ async def answer_question(
     verification = verify_prepared(prepared, answer)
     if hit is None:
         await remember_answer(cache, ollama, prepared, answer, verification)
+    warnings = mark_cited(prepared.warnings, parse_citations(answer))
     if (
         verification is not None
         and not verification.ok
@@ -491,6 +545,10 @@ async def answer_question(
             verification=verification,
             answer_check=prepared.answer_check,
             cached=hit is not None,
+            # The reader is sent to the passages themselves: their safety text
+            # and revision go with them.
+            warnings=warnings,
+            sources=prepared.sources,
         )
     return AnswerResult(
         question=question,
@@ -502,6 +560,8 @@ async def answer_question(
         verification=verification,
         answer_check=prepared.answer_check,
         cached=hit is not None,
+        warnings=warnings,
+        sources=prepared.sources,
     )
 
 

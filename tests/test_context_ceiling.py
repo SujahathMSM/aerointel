@@ -133,6 +133,18 @@ class FakeSession:
     async def commit(self):
         pass
 
+    async def execute(self, statement):
+        # The warning lookback reads neighbouring chunks; this store has none.
+        return _NoRows()
+
+
+class _NoRows:
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
 
 class FakeOllama:
     """Records every chat call; answers the check with `verdict`."""

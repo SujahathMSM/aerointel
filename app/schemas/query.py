@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +18,44 @@ class RetrievedChunk(BaseModel):
     document_id: int | None = None
     page: int | None = None
     page_label: str | None = None
+    # Which issue of the document the passage is from ("AC 43.13-1B CHG 1"),
+    # and the issue date printed on its own page (a change-page document
+    # mixes issues). None for documents ingested before revisions were stored.
+    revision: str | None = None
+    issued: str | None = None
+
+
+class SourceOut(BaseModel):
+    """A document the answer reads from, and how current its revision is."""
+
+    document_id: int
+    title: str
+    revision: str | None = None
+    revision_date: date | None = None
+    stored_on: date | None = None
+    # Marked by hand as replaced: do not use without checking.
+    superseded: bool = False
+    # A newer revision of the same document is stored (but was not read).
+    newer_revision: str | None = None
+    newer_document_id: int | None = None
+    # Plain-language summary: which revision, stored when, confirm it is current.
+    note: str
+
+
+class WarningOut(BaseModel):
+    """WARNING / CAUTION / NOTE text from a passage, copied word for word."""
+
+    level: str  # "WARNING", "CAUTION" or "NOTE", most severe first
+    text: str  # verbatim, without the label
+    # [n] of the context block it is in; None when it was found at the start
+    # of the paragraph that block belongs to (source "paragraph_start").
+    block: int | None = None
+    source: str  # "block" | "paragraph_start"
+    page: int | None = None
+    page_label: str | None = None
+    # The answer cites its block (or the block its paragraph leads into).
+    # Always false on the stream's `meta`, sent before the answer exists.
+    cited: bool = False
 
 
 class VerificationOut(BaseModel):
@@ -57,6 +97,12 @@ class QueryResponse(BaseModel):
     # The model's own judgement, before answering, of whether the passages
     # answer the question: "yes", "no" or "unclear". None when ANSWER_CHECK=off.
     answer_check: str | None = None
+    # Safety labels from the passages the model read, never dropped and never
+    # chosen by the model. Empty on a refusal.
+    warnings: list[WarningOut] = []
+    # The documents the answer reads from: revision and whether it is current.
+    # Empty on a refusal.
+    sources: list[SourceOut] = []
     # The answer was reused from the semantic cache: written earlier for an
     # equivalent question over these exact passages, not by a new model call.
     cached: bool = False

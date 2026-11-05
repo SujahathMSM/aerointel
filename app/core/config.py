@@ -99,6 +99,12 @@ class Settings(BaseSettings):
     # extra model call per answered question. Measure with
     # `python -m evals.live_eval` before choosing "refuse".
     answer_check: Literal["off", "flag", "refuse"] = "off"
+    # Safety labels (WARNING / CAUTION / NOTE) are always returned with an
+    # answer, copied by code from the passages the model reads. A warning at the
+    # top of a numbered paragraph can sit in an earlier chunk than the one
+    # retrieved: look back at most this many chunks of the same document, up to
+    # the paragraph heading (0 = only the chunks read).
+    warning_lookback_chunks: int = Field(default=4, ge=0, le=10)
     # Version of the answer-check prompt ("v1", "v2"; None = newest file). Pin
     # the measured one: a new prompt file must not change refusals unmeasured.
     answer_check_version: str | None = "v2"

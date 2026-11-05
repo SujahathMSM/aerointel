@@ -44,10 +44,10 @@ are caught by reading the passages, not by distance. See
 | Stage 2 — cited generation + refusal | Distance-ceiling gate + forced `[n]` citations + structural refusal (6/6 checks) | ✅ verified |
 | Phase 0 — application skeleton | Same RAG behavior, now a real FastAPI service: async SQLAlchemy + Alembic, timeout/retry/circuit-breaker around Ollama, structured JSON logs, Docker, CI | ✅ verified |
 | Phase 1 — hybrid retrieval + eval | Postgres full-text keyword search + pgvector merged via Reciprocal Rank Fusion, cross-encoder reranker, prompt registry, embedding-version tracking, golden-set eval harness (recall@k, MRR, faithfulness) in CI | ✅ verified |
-| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic answer cache ✅ (off by default; measured: 0 wrong reuses at 0.97, but paraphrases rarely retrieve identical passages, so in practice it serves repeated questions) | ✅ built |
+| Phase 2 — production API layer | Redis rate limiting ✅ (token bucket per client, atomic Lua script, fail-open circuit breaker, 429 + `Retry-After`) · JWT auth with scopes ✅ · idempotency keys on `/v1/ingest` ✅ · SSE streaming of answers ✅ · semantic answer cache ✅ (off by default; measured: 0 wrong reuses at 0.97, but paraphrases rarely retrieve identical passages, so in practice it serves repeated questions) | ✅ done |
 | Phase 3 — event-driven ingestion | Redis Streams saga, dead-letter queue, outbox pattern, scheduled re-indexing | not started |
 | Phase 4 — data layer at scale | Real PDF ingestion with page-level citations ✅ (upload endpoint + CLI, duplicate-file detection, OCR fallback, paragraph-aware chunking) · page-scored eval on a 35-question FAA golden set ✅ · reading limit past the gate ✅ · HNSW index, collections, pgBouncer, read replica, MinIO still to do | 🚧 in progress |
-| Trust layer | Figure check against cited passages ✅ · unknown-word check ✅ · answer check ("do these passages answer it?") ✅ · local or Anthropic model for answers, measured side by side ✅ · warnings, revision awareness still to do | 🚧 in progress |
+| Trust layer | Figure check against cited passages ✅ · unknown-word check ✅ · answer check ("do these passages answer it?") ✅ · local or Anthropic model for answers, measured side by side ✅ · warnings always shown ✅ (WARNING / CAUTION / NOTE copied by code, with paragraph lookback) · revision awareness ✅ (revision per document and issue per page from the running headers, newer-revision and superseded notes; needs a `--replace` re-ingest and both evals re-run) | ✅ built |
 | Phase 5 — deploy & infrastructure-as-code | Local `kind` Kubernetes cluster, Helm charts, Terraform, canary/blue-green deploys | not started |
 | Phase 6 — observability | Prometheus, Grafana, OpenTelemetry traces, Jaeger, k6 load tests, SLO/error-budget dashboard | not started |
 | Phase 7 — security & hardening | Keycloak OIDC, TLS via mkcert, SOPS-encrypted secrets, audit log, OWASP Top-10 pass | not started |
@@ -197,12 +197,15 @@ app/
     pdf_text.py               PDF text extraction, header/footer cleanup, chunking
     ocr.py                    optional OCR for scanned pages (tesseract + PyMuPDF)
     context.py                 optional: add the chunk(s) after each hit to the prompt
+    warnings.py                WARNING / CAUTION / NOTE copied from the passages read
+    revisions.py               which revision an answer quotes; newer stored / superseded
 
 evals/                    scoreboards: run_eval (sample corpus, by chunk id) and
                           doc_eval (real documents, scored by page; golden_faa.json)
 alembic/                  versioned schema migrations
 scripts/                  original stage scripts (ask.py, verify_*.py, ...) — still work;
-                          ingest_pdfs.py and fetch_sample_docs.ps1 for real documents
+                          ingest_pdfs.py and fetch_sample_docs.ps1 for real documents,
+                          mark_superseded.py for the manual "replaced" flag
 tests/                    pytest suite (unit, integration, local-Ollama)
 sql/                      original raw-SQL schema (pre-Alembic reference)
 docs/PHASE_0.md           file-by-file walkthrough of Phase 0
@@ -511,8 +514,28 @@ What happens to a file:
 
 Each stored chunk records its document, its position, the PDF page and the
 printed page. `/v1/query` and `/v1/search` return them (`document_id`, `page`,
-`page_label`), and the model is told "Source: AC 43.13-1B, page 3-3 (PDF page
-121)" so it can cite precisely.
+`page_label`, plus `revision` and `issued`, below), and the model is told
+"Source: AC 43.13-1B CHG 1, page 3-3 (issued 2001-09-27, PDF page 121)" so it
+can cite precisely.
+
+**Revision.** Before the running headers are stripped, each page's header line
+is kept ("9/27/01 AC 43.13-1B CHG 1"). From them the document's revision is the
+header with the latest date ("AC 43.13-1B CHG 1"), else the most common header,
+else the title; its `document_key` is the revision without its change marker
+("AC 43.13-1B"). Each chunk records its own page's issue (`metadata.page_issued`):
+a change-page document mixes issues, unchanged pages keeping the original date.
+`--dry-run` prints what was found, so check it before storing. Override with
+`--revision "AC 43.13-1B CHG 1"` / `--document-key` (one file at a time) or the
+upload form fields `revision` / `document_key`. Documents stored before this
+(migration 0005) have no revision until re-ingested with `--replace`.
+
+```powershell
+alembic upgrade head                                           # 0005: revision columns
+python scripts\ingest_pdfs.py data\aviation\AC_43.13-1B_CHG_1.pdf --dry-run   # check the parsed revision
+python scripts\ingest_pdfs.py data\aviation\AC_43.13-1B_CHG_1.pdf --replace   # store it (new document id)
+python scripts\mark_superseded.py --list                       # stored documents and revisions
+python scripts\mark_superseded.py 64                           # mark one superseded (--undo to clear)
+```
 
 OCR needs the tesseract program and PyMuPDF: `pip install -r requirements-ocr.txt`
 plus tesseract on your PATH (on Windows: the UB-Mannheim installer). In Docker,
@@ -641,6 +664,68 @@ request for an *explanation or judgement*. `ANSWER_CHECK_VERSION` pins the promp
 the refusal no longer depends on the model obeying rule 2. v2 was written after
 seeing the v1 miss, so its 24 of 24 is partly by construction; questions written by
 someone else are the real test.
+
+**Warnings are always shown.** The manual puts its safety text under labels
+("WARNING: Do not probe cuts or embedded foreign objects while tire is
+inflated."), and a short, correct answer can leave it out. So the labels are
+found by code (`app/services/warnings.py`), not by the model: every WARNING,
+CAUTION and NOTE in the passages the model reads is copied word for word into
+`warnings` on `/v1/query` and the stream's `meta`, whatever the answer says. Each
+has its `level`, `text`, `block` ([n]), `page`/`page_label`, `source` and `cited`.
+They are sorted WARNING, CAUTION, NOTE; within a level, blocks the answer cites
+first (on the stream `cited` is always false: `meta` is sent before the answer),
+then reading order. Duplicates from overlapping chunks are dropped. Warnings never
+refuse or block, and a refused question gets none (an answer withheld by the
+figure check keeps them, since the reader is sent to the passages).
+
+A warning ends at the next list item ("c. Tread Cuts."), FIGURE/TABLE caption,
+SECTION or numbered paragraph heading, or label; a label without a colon (the
+Table 7-1 banner "CAUTION THE FOLLOWING TORQUE VALUES ...") keeps one sentence;
+600 characters at most, cut on a sentence end. Only upper-case labels that start a
+statement count ("see NOTE 3" and "note that" do not). Each read chunk is joined to
+its stored neighbours, overlap removed, so a warning cut by the chunk's end is
+completed from the next chunk, and one at the top of the same numbered paragraph,
+at most `WARNING_LOOKBACK_CHUNKS` (4) chunks back, never past the heading or into
+another document, is included with `source: "paragraph_start"`, its page and
+`block: null` (the model did not read it). Found at query time from chunk text:
+no re-ingest needed.
+
+**Every answer names its revision.** Each chunk in the response carries
+`revision` ("AC 43.13-1B CHG 1") and `issued` (its page's issue date), and the
+model's source line names both. `sources` lists each document read with its
+`revision`, `revision_date`, `stored_on`, `superseded`, `newer_revision` and a
+plain `note`: "From AC 43.13-1B CHG 1, as stored on 2026-10-16; confirm it is the
+current revision before use", or "A newer revision is stored: ...", or "... is
+marked superseded". The system only knows what is stored; there is no online
+check for newer FAA revisions, so the note always asks for confirmation, and a
+known replacement is marked by hand with `scripts/mark_superseded.py`. The issue
+date is left out of the text the figure check reads, so a wrong "27" or "9" in
+an answer is not excused by "2001-09-27". The answer cache hashes the whole prompt
+layout, so an answer written before the source line named the revision is never
+reused after it does.
+
+Re-ingesting with `--replace` changes the document id and the text the model
+reads (the source line), so re-run `python -m evals.doc_eval` and
+`python -m evals.live_eval` afterwards and compare with the saved results.
+
+Measured 2026-11-05 on AC 43.13-1B (document 195, `evals/results/revision_doc.json`,
+`revision_live.json`; compared with `kw_any.json` / `live_kw_any.json`, same
+settings): the parsed revision is "AC 43.13-1B CHG 1" (2001-09-27), with 518 pages
+issued 1998-09-08, 237 issued 2001-09-27 and 1 undated. Chunks are identical
+(1749, paragraphs), so `doc_eval` is unchanged to the third decimal (recall@1
+0.771, MRR 0.859, fact coverage 0.814). `live_eval` with the new source line:
+right questions declined 6 -> 5, answers with every fact 14 -> 15, figure flags
+0 of 17 both times, off-topic answers declined 16 -> 17 of 17, answer check
+unchanged (one run each, within run-to-run noise: nothing got worse). A smoke
+test on three real questions returned the Table 7-1 CAUTION banner as one
+sentence, the tire WARNING stopping before "c. Tread Cuts", and three torque
+NOTEs each ending at the next list item; it also showed `cited` set on warnings
+in uncited blocks (fixed, with the real passages as regression tests).
+
+Not caught: safety text with no label. Paragraph 9-17 lists "• Do not attempt to
+disassemble wheel until the tire has been completely deflated" as a bullet, and
+the text layer carries no WARNING or CAUTION for it, so code cannot tell it from
+an ordinary list. The model still reads it as part of the passage.
 
 To see why a question retrieves what it does:
 

@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Computed,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -34,6 +36,7 @@ class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
         UniqueConstraint("content_hash", name="uq_documents_content_hash"),
+        Index("idx_documents_document_key", "document_key"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -45,6 +48,19 @@ class Document(Base):
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False)
     # Pages whose text came from OCR rather than the PDF's own text layer.
     ocr_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Which issue of the document this file is ("AC 43.13-1B CHG 1"): parsed
+    # from the running headers, or given at upload. Every answer names it.
+    revision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The latest issue date printed on any page.
+    revision_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The same for every revision of one document ("AC 43.13-1B"), so a newer
+    # stored revision can be pointed out.
+    document_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set by hand when this revision is known to be replaced (the system only
+    # knows what is stored, not what the FAA has published since).
+    superseded: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

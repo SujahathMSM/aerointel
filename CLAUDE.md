@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AeroIntel is an aviation-maintenance RAG service, built stage by stage with each
 stage proven by its own tests before the next starts. Phase 1 (hybrid
-retrieval + eval harness) is closed. Phase 2 is in progress: Redis rate limiting,
+retrieval + eval harness) is closed. Phase 2 is done: Redis rate limiting,
 JWT auth (scopes `query`/`ingest`), idempotency keys on `/v1/ingest`, SSE
 streaming (`/v1/query/stream`) and the semantic answer cache (off by default) are done. PDF
 ingestion with page citations (a Phase 4 item) was pulled forward and exists. Nothing
@@ -49,7 +49,8 @@ mypy app                   # note: mypy excludes alembic/versions, scripts, test
 python -m evals.run_eval
 python -m evals.run_eval --retriever hybrid --reranker crossencoder --faithfulness
 python -m evals.doc_eval [--retriever hybrid] [--neighbors 1] [--show ID|all]   # real documents, scored by page (needs the FAA manual ingested)
-python scripts/ingest_pdfs.py data/aviation [--dry-run] [--replace]   # ingest PDFs; --replace re-chunks stored ones
+python scripts/ingest_pdfs.py data/aviation [--dry-run] [--replace] [--revision R]   # ingest PDFs; --replace re-chunks stored ones
+python scripts/mark_superseded.py [--list | ID [--undo]]   # manual "this revision is replaced" flag
 python -m evals.live_eval [--retriever hybrid] [--check-only] [--save F]   # trust layer on the live model (needs Ollama)
 python -m evals.cache_eval [--no-retrieval] [--save F]   # answer-cache threshold: wrong/right reuses on labelled pairs (needs Ollama)
 
@@ -193,6 +194,28 @@ the distance gate and before the commit, like context widening; it only decides
 ones it refused. Neither fixes the
 "near-topic" question (every word occurs in the manual); that is still the
 prompt's rule 2. Don't turn `refuse` on without reading the `doc_eval` table.
+
+Warnings (`services/warnings.py`): every WARNING/CAUTION/NOTE in the passages the
+model reads is copied verbatim into `warnings` (response and stream `meta`) by
+code, never chosen by the model, never refusing. `prepare_answer()` calls
+`find_warnings()` after widening and before the commit: one query fetches up to
+`WARNING_LOOKBACK_CHUNKS` (4) chunks before and 2 after each read chunk; the
+window is joined (overlap removed) so a warning cut at a chunk end is completed
+and one at the top of the same numbered paragraph is added as
+`source="paragraph_start"` with its page and no [n]. Gate/answer-check refusals
+get none. Sorted WARNING > CAUTION > NOTE, then cited (after the answer), then
+reading order.
+
+Revisions: `pdf_text.running_headers()` keeps each page's header before it is
+stripped (a dated edge line, else a repeated one, never a page-number line);
+`document_revision()` picks the latest-dated header (explicit revision wins);
+`documents.revision/revision_date/document_key/superseded` (migration 0005) and
+chunk `metadata.revision/page_issued/page_revision`. `context_block()` names the
+revision and page issue; `context_block(for_verification=True)` leaves the issue
+date out (its digits must not count as supported figures). `services/revisions.py`
+builds `sources` (newer stored revision by `document_key`, superseded flag, "confirm
+it is current" note). `cache_bucket()` hashes the whole prompt layout, so a source
+line change is a new bucket. Old chunks keep the old source line until `--replace`.
 
 Tests: `tests/auth_helpers.py` configures auth env (and per-process Redis key
 prefixes, so runs never interfere) before `app` loads; `conftest.py` provides an
