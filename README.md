@@ -708,6 +708,25 @@ Re-ingesting with `--replace` changes the document id and the text the model
 reads (the source line), so re-run `python -m evals.doc_eval` and
 `python -m evals.live_eval` afterwards and compare with the saved results.
 
+Measured 2026-11-05 on AC 43.13-1B (document 195, `evals/results/revision_doc.json`,
+`revision_live.json`; compared with `kw_any.json` / `live_kw_any.json`, same
+settings): the parsed revision is "AC 43.13-1B CHG 1" (2001-09-27), with 518 pages
+issued 1998-09-08, 237 issued 2001-09-27 and 1 undated. Chunks are identical
+(1749, paragraphs), so `doc_eval` is unchanged to the third decimal (recall@1
+0.771, MRR 0.859, fact coverage 0.814). `live_eval` with the new source line:
+right questions declined 6 -> 5, answers with every fact 14 -> 15, figure flags
+0 of 17 both times, off-topic answers declined 16 -> 17 of 17, answer check
+unchanged (one run each, within run-to-run noise: nothing got worse). A smoke
+test on three real questions returned the Table 7-1 CAUTION banner as one
+sentence, the tire WARNING stopping before "c. Tread Cuts", and three torque
+NOTEs each ending at the next list item; it also showed `cited` set on warnings
+in uncited blocks (fixed, with the real passages as regression tests).
+
+Not caught: safety text with no label. Paragraph 9-17 lists "• Do not attempt to
+disassemble wheel until the tire has been completely deflated" as a bullet, and
+the text layer carries no WARNING or CAUTION for it, so code cannot tell it from
+an ordinary list. The model still reads it as part of the passage.
+
 To see why a question retrieves what it does:
 
 ```powershell

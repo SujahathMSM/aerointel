@@ -78,7 +78,8 @@ class SafetyWarning:
     # The block (or, for a paragraph start, the block it leads into) is cited
     # by the answer. Unknown before the answer is written, so False until then.
     cited: bool = False
-    # Internal: the blocks it belongs to (read in, or leads into), for `cited`.
+    # Internal, for `cited`: the blocks it is in; for a paragraph start (in no
+    # read block), the blocks of that paragraph it leads into.
     for_blocks: tuple[int, ...] = ()
 
 
@@ -272,10 +273,13 @@ def merge(found: list[SafetyWarning]) -> list[SafetyWarning]:
     """Drop repeats (overlapping chunks, windows) and sort most severe first.
 
     The same warning seen twice stays where it was first seen, but a sighting
-    inside a read block beats one at a paragraph start (it has a real [n]), a
-    cut-off copy gives way to the complete text (one starts with the other),
-    and it belongs to every block either sighting did. The sort is stable:
-    within a level, cited before uncited, then reading order.
+    inside a read block beats one at a paragraph start (it has a real [n]), and
+    a cut-off copy gives way to the complete text (one starts with the other).
+    A warning inside read blocks belongs to those blocks only: that a later
+    block of the same paragraph also found it by lookback must not make it
+    "cited" when the answer cites only that later block (seen on the real
+    manual: a NOTE in [3] marked cited by an answer citing [1]). The sort is
+    stable: within a level, cited before uncited, then reading order.
     """
     kept: list[SafetyWarning] = []
     for w in found:
@@ -293,11 +297,13 @@ def merge(found: list[SafetyWarning]) -> list[SafetyWarning]:
             continue
         k = kept[dup]
         best = w if k.source != SOURCE_BLOCK and w.source == SOURCE_BLOCK else k
+        # Only sightings of the same kind as the one kept count.
+        same = [x for x in (k, w) if x.source == best.source]
         kept[dup] = replace(
             best,
             text=max(k.text, w.text, key=len),
-            cited=k.cited or w.cited,
-            for_blocks=tuple(dict.fromkeys(k.for_blocks + w.for_blocks)),
+            cited=any(x.cited for x in same),
+            for_blocks=tuple(dict.fromkeys(b for x in same for b in x.for_blocks)),
         )
     return sorted(kept, key=lambda w: (LEVELS.index(w.level), not w.cited))
 

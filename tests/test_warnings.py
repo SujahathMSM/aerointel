@@ -301,7 +301,114 @@ def test_a_warning_in_a_read_block_beats_the_same_one_at_a_paragraph_start():
     )
     (warning,) = warnings
     assert warning.source == SOURCE_BLOCK and warning.block == 2
-    assert mark_cited(warnings, [1])[0].cited  # it leads into [1] too
+    # It is in [2]: an answer citing only [1] does not cite it ...
+    assert not mark_cited(warnings, [1])[0].cited
+    assert mark_cited(warnings, [2])[0].cited
+
+
+def test_a_paragraph_start_warning_counts_as_cited_through_its_block():
+    stored = _doc(PARAGRAPH)
+    (warning,) = warnings_for(_read(stored[(64, 13)]), stored, lookback=4)
+    assert warning.source == SOURCE_PARAGRAPH_START
+    # ... but one found only by lookback is cited through the block it leads into.
+    assert mark_cited([warning], [1])[0].cited
+
+
+# Real AC 43.13-1B text (document 195, 2026-11-05 smoke test), verbatim.
+TORQUE_7_40 = (
+    "7-40. TORQUES. The importance of correct torque application cannot be "
+    "overemphasized. Undertorque can result in unnecessary wear of nuts and bolts, "
+    "as well as the parts they secure. Overtorque can cause failure of a bolt or "
+    "nut from overstressing the threaded areas. Uneven or additional loads that are "
+    "applied to the assembly may result in wear or premature failure. The "
+    "following are a few simple but important procedures that should be followed "
+    "to ensure that correct torque is applied. NOTE: Be sure that the torque "
+    "applied is for the size of the bolt shank and not the wrench size. a. "
+    "Calibrate the torque wrench at least once a year, or immediately after it has "
+    "been abused or dropped, to ensure continued accuracy. b. Be sure the bolt and "
+    "nut threads are clean and dry, unless otherwise specified by the manufacturer."
+    " c. Run the nut down to near contact with the washer or bearing surface and "
+    "check the friction drag torque required to turn the nut. Whenever possible, "
+    "apply the torque to the nut and not the bolt. This will reduce rotation of "
+    "the bolt in the hole and reduce wear. d. Add the friction drag torque to the "
+    "desired torque."
+)
+TORQUE_7_40_CONT = (
+    "This will reduce rotation of the bolt in the hole and reduce wear. d. Add the "
+    "friction drag torque to the desired torque. This is referred to as “final "
+    "torque,” which should register on the indicator or setting for a snap-over "
+    "type torque wrench. e. Apply a smooth even pull when applying torque pressure."
+    " If chattering or a jerking motion occurs during final torque, back off the "
+    "nut and retorque. NOTE: Many applications of bolts in aircraft/engines require"
+    " stretch checks prior to reuse. This requirement is due primarily to bolt "
+    "stretching caused by overtorquing. f. When installing a castle nut, start "
+    "alignment with the cotter pin hole at the minimum recommended torque plus "
+    "friction drag torque. NOTE: Do not exceed the maximum torque plus the "
+    "friction drag. If the hole and nut castellation do not align, change the "
+    "washer or nut and try again. Exceeding the maximum recommended torque is not "
+    "recommended. g. When torque is applied to bolt heads or capscrews, apply the "
+    "recommended torque plus friction drag torque."
+)
+TORQUE_TABLE_LEAD = (
+    "i. Table 7-1 shows the recommended torque to be used when specific torque is "
+    "not supplied by the manufacturer. The table includes standard nut and bolt "
+    "combinations, currently used in aviation maintenance. For further "
+    "identification of hardware, see Section 11. TABLE 7-1. RECOMMENDED TORQUE "
+    "VALUES (INCH-POUNDS) CAUTION THE FOLLOWING TORQUE VALUES ARE DERIVED FROM OIL "
+    "FREE CADMIUM-PLATED THREADS."
+)
+
+
+def test_real_manual_torque_paragraph():
+    stored = _doc([TORQUE_7_40, TORQUE_7_40_CONT, "h. Other text.", TORQUE_TABLE_LEAD],
+                  first_index=0)  # fmt: skip
+    read = [stored[(64, 3)], stored[(64, 0)], stored[(64, 1)]]  # [1] table, [2] [3]
+    warnings = mark_cited(warnings_for(_read(*read), stored, lookback=4), [1])
+    assert [(w.level, w.block, w.cited) for w in warnings] == [
+        ("CAUTION", 1, True),
+        ("NOTE", 2, False),
+        ("NOTE", 3, False),
+        ("NOTE", 3, False),
+    ]
+    assert warnings[0].text == (
+        "THE FOLLOWING TORQUE VALUES ARE DERIVED FROM OIL FREE CADMIUM-PLATED THREADS."
+    )
+    assert warnings[1].text == (
+        "Be sure that the torque applied is for the size of the bolt shank and not "
+        "the wrench size."
+    )
+    assert warnings[3].text.endswith(
+        "Exceeding the maximum recommended torque is not recommended."
+    )
+
+
+def test_real_manual_tire_inspection():
+    inspection = (
+        "9-14. TIRE INSPECTION AND REPAIR. Tires should be inspected frequently. "
+        "b. Uneven Wear. If tread wear is excessive on one side, the tire can be "
+        "dismounted and turned around, providing there is no exposed fabric. Gear "
+        "misalignment causing this condition should be corrected. WARNING: Do not "
+        "probe cuts or embedded foreign objects while tire is inflated. c. Tread "
+        "Cuts. Inspect tread for cuts and other foreign object damage, and mark with "
+        "crayon or chalk."
+    )
+    inflation = (
+        "should be reduced. On the other hand, a tire worn on the edges, but not in "
+        "the center, indicates underinflation. These indications are shown in Figure "
+        "9-7. FIGURE 9-7. EXAMPLES OF TREAD WEAR INDICATING OVERINFLATION AND "
+        "UNDERINFLATION NOTE: Th e use of nitrogen to inflate tires is recommended. "
+        "Do not use oxygen to inflate tires. Deflate tires prior to removing them "
+        "from the aircraft or when built-up tire assemblies are being shipped."
+    )
+    stored = _doc([inspection, inflation, "9-15. INFLATION OF TIRES. There is danger."],
+                  first_index=0)  # fmt: skip
+    read = [stored[(64, 1)], stored[(64, 0)]]  # [1] nitrogen note, [2] inspection
+    warnings = mark_cited(warnings_for(_read(*read), stored, lookback=4), [1])
+    assert [(w.level, w.block, w.cited) for w in warnings] == [
+        ("WARNING", 2, False),  # most severe first, but not cited by [1]
+        ("NOTE", 1, True),
+    ]
+    assert warnings[1].text.endswith("built-up tire assemblies are being shipped.")
 
 
 # ------------------------------------------------- in the answer service
