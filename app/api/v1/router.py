@@ -43,6 +43,7 @@ from app.schemas.query import (
     QueryRequest,
     QueryResponse,
     RetrievedChunk,
+    SourceOut,
     VerificationOut,
     WarningOut,
 )
@@ -60,6 +61,7 @@ from app.services.generation import (
 from app.services.ingestion import ingest_chunk
 from app.services.pdf_text import PdfError
 from app.services.pipeline import retrieve
+from app.services.revisions import SourceRevision
 from app.services.verification import Verification
 from app.services.warnings import SafetyWarning
 
@@ -108,6 +110,23 @@ def _warnings_out(warnings: list[SafetyWarning]) -> list[WarningOut]:
     ]
 
 
+def _sources_out(sources: list[SourceRevision]) -> list[SourceOut]:
+    return [
+        SourceOut(
+            document_id=s.document_id,
+            title=s.title,
+            revision=s.revision,
+            revision_date=s.revision_date,
+            stored_on=s.stored_on,
+            superseded=s.superseded,
+            newer_revision=s.newer_revision,
+            newer_document_id=s.newer_document_id,
+            note=s.note,
+        )
+        for s in sources
+    ]
+
+
 def _refusal_text(reason, unknown_terms, verification) -> str:
     figures = (
         [*verification.unsupported, *verification.unit_mismatch] if verification else []
@@ -129,6 +148,8 @@ def _to_retrieved(chunk, distance: float) -> RetrievedChunk:
         document_id=getattr(chunk, "document_id", None),
         page=getattr(chunk, "page", None),
         page_label=getattr(chunk, "page_label", None),
+        revision=(chunk.metadata_ or {}).get("revision"),
+        issued=(chunk.metadata_ or {}).get("page_issued"),
     )
 
 
@@ -164,6 +185,7 @@ async def query(
             else None,
             answer_check=result.answer_check,
             warnings=_warnings_out(result.warnings),
+            sources=_sources_out(result.sources),
         )
 
     logger.info(
@@ -187,6 +209,7 @@ async def query(
         answer_check=result.answer_check,
         cached=result.cached,
         warnings=_warnings_out(result.warnings),
+        sources=_sources_out(result.sources),
     )
 
 
@@ -211,7 +234,9 @@ async def query_stream(
                  unknown_terms, answer_check, chunks (the sources),
                  prompt_version, model (who writes the answer), warnings
                  (WARNING / CAUTION / NOTE text from the passages; `cited` is
-                 always false here, the answer does not exist yet). Always first.
+                 always false here, the answer does not exist yet), sources
+                 (each document's revision and whether a newer one is stored).
+                 Always first.
     - `token` -- `{"text": "..."}`, repeated; concatenate to build the answer.
     - `verification` -- only when the answer contained figures or citations to
                  check: the same object as `/v1/query`'s `verification`. The text
@@ -249,7 +274,8 @@ async def query_stream(
         answer_check=prepared.answer_check,
         cached=hit is not None,
         warnings=_warnings_out(prepared.warnings),
-    ).model_dump(exclude={"answer", "verification"})
+        sources=_sources_out(prepared.sources),
+    ).model_dump(mode="json", exclude={"answer", "verification"})
 
     async def events() -> AsyncIterator[str]:
         started = time.monotonic()
@@ -346,11 +372,16 @@ async def upload_document(
     session: SessionDep,
     ollama: OllamaDep,
     title: Annotated[str | None, Form(max_length=300)] = None,
+    revision: Annotated[str | None, Form(max_length=200)] = None,
+    document_key: Annotated[str | None, Form(max_length=200)] = None,
 ):
     """Upload a PDF: it is read, cut into page-bound chunks, embedded and stored.
 
-    Answers cite the document and page (both the PDF page and the number
-    printed on it). Uploading the same file again changes nothing and returns
+    Answers cite the document, its revision and the page (both the PDF page and
+    the number printed on it, with that page's issue date). The revision ("AC
+    43.13-1B CHG 1") is read from the running headers unless `revision` is
+    given; `document_key` ("AC 43.13-1B") links revisions of one document so an
+    answer can say a newer one is stored. Uploading the same file again changes nothing and returns
     the existing document with `duplicate: true`.
 
     The request stays open until embedding finishes, which can take minutes
@@ -373,7 +404,13 @@ async def upload_document(
 
     try:
         result = await ingest_pdf(
-            session, ollama, bytes(data), file.filename or "document.pdf", title
+            session,
+            ollama,
+            bytes(data),
+            file.filename or "document.pdf",
+            title,
+            revision=revision,
+            key=document_key,
         )
     except PdfError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

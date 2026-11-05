@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from pathlib import PurePath
 
 from sqlalchemy import delete, select
@@ -13,7 +14,16 @@ from app.core.logging import get_logger
 from app.db.models import Document, DocumentChunk
 from app.llm.ollama import OllamaClient
 from app.services.ocr import ocr_pages
-from app.services.pdf_text import PdfError, chunk_pages, chunking_name, extract_pages
+from app.services.pdf_text import (
+    PdfError,
+    chunk_pages,
+    chunking_name,
+    document_key,
+    document_revision,
+    extract_pages,
+    header_revision,
+    latest_date,
+)
 
 logger = get_logger(__name__)
 
@@ -34,6 +44,11 @@ class IngestedDocument:
     duplicate: bool
     # With replace=True: the id of the stored copy that this ingest deleted.
     replaced_document_id: int | None = None
+    # Which issue of the document this is, and the latest date printed in it.
+    revision: str | None = None
+    revision_date: date | None = None
+    document_key: str | None = None
+    superseded: bool = False
 
 
 def _summary(
@@ -48,7 +63,26 @@ def _summary(
         ocr_pages=document.ocr_pages,
         duplicate=duplicate,
         replaced_document_id=replaced,
+        revision=document.revision,
+        revision_date=document.revision_date,
+        document_key=document.document_key,
+        superseded=bool(document.superseded),
     )
+
+
+def revision_metadata(revision: str | None, page_header: str | None) -> dict:
+    """What a chunk records about its issue: the document's revision, and the
+    header printed on its own page with that page's issue date."""
+    meta: dict = {}
+    if revision:
+        meta["revision"] = revision
+    if page_header:
+        meta["page_header"] = page_header
+        if issued := latest_date(page_header):
+            meta["page_issued"] = issued.isoformat()
+        if page_revision := header_revision(page_header):
+            meta["page_revision"] = page_revision
+    return meta
 
 
 def clean_filename(filename: str) -> str:
@@ -75,6 +109,8 @@ async def ingest_pdf(
     title: str | None = None,
     progress: Callable[[int, int], None] | None = None,
     replace: bool = False,
+    revision: str | None = None,
+    key: str | None = None,
 ) -> IngestedDocument:
     """Turn one PDF into searchable chunks that remember their page.
 
@@ -93,6 +129,10 @@ async def ingest_pdf(
     that long would starve every other request.
 
     `progress(done, total)` is called after each embedding batch.
+
+    `revision` ("AC 43.13-1B CHG 1") and `key` ("AC 43.13-1B") override what is
+    parsed from the running headers. Each chunk also records its own page's
+    issue, since a change-page document mixes issues.
     """
     settings = get_settings()
     filename = clean_filename(filename)
@@ -122,6 +162,10 @@ async def ingest_pdf(
     )
     if not chunks:
         raise PdfError("No usable text was found in the PDF.")
+    revision, revision_date = document_revision(
+        [page.header for page in pages], given=revision, fallback=title
+    )
+    key = (key or "").strip() or document_key(revision)
 
     embeddings: list[list[float]] = []
     batch_size = max(1, settings.embed_batch_size)
@@ -139,6 +183,9 @@ async def ingest_pdf(
         page_count=len(pages),
         chunk_count=len(chunks),
         ocr_pages=sum(1 for page in pages if page.ocr),
+        revision=revision,
+        revision_date=revision_date,
+        document_key=key,
     )
     if replaced is not None:
         # Chunks go with it (ON DELETE CASCADE); the new copy is stored below in
@@ -164,6 +211,7 @@ async def ingest_pdf(
                 "filename": filename,
                 "chunking": chunking_name(paragraphs),
                 "word_repair": settings.pdf_repair_split_words,
+                **revision_metadata(revision, chunk.page_header),
             },
             embedding=embedding,
             embedding_model=settings.embedding_model,
@@ -183,5 +231,7 @@ async def ingest_pdf(
         ocr_pages=document.ocr_pages,
         chunking=chunking_name(paragraphs),
         replaced_document_id=replaced,
+        revision=revision,
+        revision_date=str(revision_date) if revision_date else None,
     )
     return _summary(document, duplicate=False, replaced=replaced)

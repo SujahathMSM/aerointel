@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +18,28 @@ class RetrievedChunk(BaseModel):
     document_id: int | None = None
     page: int | None = None
     page_label: str | None = None
+    # Which issue of the document the passage is from ("AC 43.13-1B CHG 1"),
+    # and the issue date printed on its own page (a change-page document
+    # mixes issues). None for documents ingested before revisions were stored.
+    revision: str | None = None
+    issued: str | None = None
+
+
+class SourceOut(BaseModel):
+    """A document the answer reads from, and how current its revision is."""
+
+    document_id: int
+    title: str
+    revision: str | None = None
+    revision_date: date | None = None
+    stored_on: date | None = None
+    # Marked by hand as replaced: do not use without checking.
+    superseded: bool = False
+    # A newer revision of the same document is stored (but was not read).
+    newer_revision: str | None = None
+    newer_document_id: int | None = None
+    # Plain-language summary: which revision, stored when, confirm it is current.
+    note: str
 
 
 class WarningOut(BaseModel):
@@ -76,6 +100,9 @@ class QueryResponse(BaseModel):
     # Safety labels from the passages the model read, never dropped and never
     # chosen by the model. Empty on a refusal.
     warnings: list[WarningOut] = []
+    # The documents the answer reads from: revision and whether it is current.
+    # Empty on a refusal.
+    sources: list[SourceOut] = []
     # The answer was reused from the semantic cache: written earlier for an
     # equivalent question over these exact passages, not by a new model call.
     cached: bool = False

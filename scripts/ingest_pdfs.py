@@ -5,6 +5,11 @@
     python scripts/ingest_pdfs.py manual.pdf --title "AC 43.13-1B"
     python scripts/ingest_pdfs.py data/aviation --dry-run    # read and chunk only
     python scripts/ingest_pdfs.py manual.pdf --replace       # re-chunk a stored file
+    python scripts/ingest_pdfs.py manual.pdf --revision "AC 43.13-1B CHG 1"
+
+The revision ("AC 43.13-1B CHG 1") and each page's issue date are read from
+the running headers; --dry-run prints what was found, so check it before
+storing. --revision / --document-key override the parsed values (one file only).
 
 Same code path as POST /v1/documents (app/services/documents.py:ingest_pdf), but
 with no HTTP request to keep open, which is what you want for a 700-page manual.
@@ -21,6 +26,7 @@ import argparse
 import asyncio
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 # Run as `python scripts/ingest_pdfs.py` from the repo root: add the root so
@@ -33,7 +39,10 @@ from app.services.pdf_text import (  # noqa: E402
     PdfError,
     chunk_pages,
     chunking_name,
+    document_key,
+    document_revision,
     extract_pages,
+    latest_date,
 )
 
 
@@ -50,7 +59,27 @@ def find_pdfs(paths: list[str]) -> list[Path]:
     return found
 
 
-def dry_run(path: Path) -> None:
+def describe_revision(pages, given: str | None = None, key: str | None = None) -> str:
+    """What ingest would store: revision, date, key, and each page's issue."""
+    revision, revision_date = document_revision(
+        [p.header for p in pages], given=given, fallback=None
+    )
+    key = key or document_key(revision)
+    issues = Counter(str(latest_date(p.header) or "no date") for p in pages)
+    found = revision or "(none found: the title will be used)"
+    dated = f", dated {revision_date}" if revision_date else ""
+    lines = [
+        f"  revision: {found}{dated}; document key: {key or '-'}",
+        "  page issues: "
+        + ", ".join(f"{d}: {n} pages" for d, n in sorted(issues.items())),
+    ]
+    sample = next((p for p in pages if p.header), None)
+    if sample is not None:
+        lines.append(f"  header on PDF page {sample.number}: {sample.header!r}")
+    return "\n".join(lines)
+
+
+def dry_run(path: Path, revision: str | None = None, key: str | None = None) -> None:
     settings = get_settings()
     started = time.monotonic()
     pages = extract_pages(
@@ -73,13 +102,20 @@ def dry_run(path: Path) -> None:
         f"{', split words repaired' if settings.pdf_repair_split_words else ''}), "
         f"read in {time.monotonic() - started:.1f}s"
     )
+    print(describe_revision(pages, revision, key))
     if chunks:
         sample = chunks[len(chunks) // 2]
         label = f", printed page {sample.page_label}" if sample.page_label else ""
         print(f"  sample (PDF page {sample.page}{label}): {sample.text[:200]!r}")
 
 
-async def ingest(paths: list[Path], title: str | None, replace: bool = False) -> int:
+async def ingest(
+    paths: list[Path],
+    title: str | None,
+    replace: bool = False,
+    revision: str | None = None,
+    key: str | None = None,
+) -> int:
     from app.db.base import SessionFactory, engine
     from app.llm.ollama import OllamaClient
     from app.services.documents import ingest_pdf
@@ -109,6 +145,8 @@ async def ingest(paths: list[Path], title: str | None, replace: bool = False) ->
                         title if len(paths) == 1 else None,
                         progress=progress,
                         replace=replace,
+                        revision=revision if len(paths) == 1 else None,
+                        key=key if len(paths) == 1 else None,
                     )
             except PdfError as exc:
                 failures += 1
@@ -124,11 +162,18 @@ async def ingest(paths: list[Path], title: str | None, replace: bool = False) ->
                 print(f"  already ingested as document {result.document_id}: skipped")
             else:
                 if result.replaced_document_id is not None:
-                    print(f"  replaced document {result.replaced_document_id}" + " " * 20)
+                    print(
+                        f"  replaced document {result.replaced_document_id}" + " " * 20
+                    )
                 print(
                     f"  document {result.document_id}: {result.pages} pages, "
                     f"{result.chunks} chunks, {result.ocr_pages} OCR pages, "
                     f"{seconds:.0f}s" + " " * 20
+                )
+                print(
+                    f"  revision: {result.revision or '-'}"
+                    f" ({result.revision_date or 'no date'}), "
+                    f"document key: {result.document_key or '-'}"
                 )
     finally:
         await ollama.close()
@@ -149,6 +194,16 @@ def main() -> int:
         help="re-ingest files that are already stored, with the current chunking "
         "settings (the stored copy and its chunks are deleted)",
     )
+    parser.add_argument(
+        "--revision",
+        help='revision for a single file, e.g. "AC 43.13-1B CHG 1" (default: parsed '
+        "from the running headers)",
+    )
+    parser.add_argument(
+        "--document-key",
+        help='what stays the same across revisions, e.g. "AC 43.13-1B" (default: '
+        "the revision without its change marker)",
+    )
     args = parser.parse_args()
 
     pdfs = find_pdfs(args.paths)
@@ -160,12 +215,19 @@ def main() -> int:
         for path in pdfs:
             print(path)
             try:
-                dry_run(path)
+                dry_run(
+                    path,
+                    args.revision if len(pdfs) == 1 else None,
+                    args.document_key if len(pdfs) == 1 else None,
+                )
             except PdfError as exc:
                 print(f"  SKIPPED: {exc}")
         return 0
 
-    return 1 if asyncio.run(ingest(pdfs, args.title, args.replace)) else 0
+    failures = asyncio.run(
+        ingest(pdfs, args.title, args.replace, args.revision, args.document_key)
+    )
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

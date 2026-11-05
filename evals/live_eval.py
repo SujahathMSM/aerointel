@@ -228,7 +228,9 @@ async def run(
             return row
         answer = await ollama.chat(system.text, build_prompt(item["question"], context))
         verification = verify_answer(
-            answer, [context_block(c) for c, _ in context], item["question"]
+            answer,
+            [context_block(c, for_verification=True) for c, _ in context],
+            item["question"],
         )
         row.update(
             answer=answer,

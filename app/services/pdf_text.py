@@ -23,6 +23,7 @@ import re
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
@@ -50,6 +51,9 @@ class PageText:
     label: str | None  # page number printed on the page, e.g. "3-3"
     text: str  # cleaned text (single spaces, no running header/footer)
     ocr: bool = False  # True if the text came from OCR
+    # The page's running header line, kept before it is stripped: a change-page
+    # manual prints each page's own issue there ("9/27/01 AC 43.13-1B CHG 1").
+    header: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,7 @@ class TextChunk:
     page: int  # PDF page number
     page_label: str | None
     text: str
+    page_header: str | None = None
 
 
 # --------------------------------------------------------------------- labels
@@ -100,16 +105,10 @@ def _edge_width(lines: list[str], edge: int) -> int:
     return min(edge, len(lines) // 3)
 
 
-def strip_repeated_edges(
-    pages_lines: list[list[str]], edge: int = 3, min_share: float = 0.25
-) -> list[list[str]]:
-    """Drop first/last lines that repeat across many pages (headers, footers).
-
-    A line counts as a running header/footer when, ignoring digits, it appears
-    in the first or last `edge` lines of at least `min_share` of the pages
-    (and at least 3 pages). Only edge lines are ever removed, so the same
-    words in the body of a page are untouched.
-    """
+def _repeated_edges(
+    pages_lines: list[list[str]], edge: int, min_share: float
+) -> set[str]:
+    """Edge lines (digits ignored) that repeat on enough pages to be furniture."""
     counts: Counter[str] = Counter()
     for lines in pages_lines:
         width = _edge_width(lines, edge)
@@ -121,8 +120,20 @@ def strip_repeated_edges(
         counts.update(seen)
 
     threshold = max(3, min_share * len(pages_lines))
-    repeated = {line for line, n in counts.items() if n >= threshold}
+    return {line for line, n in counts.items() if n >= threshold}
 
+
+def strip_repeated_edges(
+    pages_lines: list[list[str]], edge: int = 3, min_share: float = 0.25
+) -> list[list[str]]:
+    """Drop first/last lines that repeat across many pages (headers, footers).
+
+    A line counts as a running header/footer when, ignoring digits, it appears
+    in the first or last `edge` lines of at least `min_share` of the pages
+    (and at least 3 pages). Only edge lines are ever removed, so the same
+    words in the body of a page are untouched.
+    """
+    repeated = _repeated_edges(pages_lines, edge, min_share)
     cleaned = []
     for lines in pages_lines:
         width = _edge_width(lines, edge)
@@ -134,6 +145,120 @@ def strip_repeated_edges(
             keep.append(line)
         cleaned.append(keep)
     return cleaned
+
+
+# ------------------------------------------------------------------ revisions
+
+# 9/27/01, 09/08/1998. Not part of a longer number or fraction run.
+_DATE = re.compile(r"(?<![\d/])(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})(?![\d/])")
+# "Par 3-2", "Pars 7-1 through 7-5": paragraph references in a footer.
+_PAR_REF = re.compile(
+    r"\bPar(?:agraph)?s?\.?\s+\d[\w.-]*(?:\s+(?:through|thru|to|and)\s+\d[\w.-]*)?"
+)
+# An issue header is short; a longer edge line with a date is body text.
+MAX_HEADER_CHARS = 120
+
+
+def parse_dates(text: str) -> list[date]:
+    """Every m/d/y date in `text`; two-digit years >= 50 are 19xx, else 20xx."""
+    found = []
+    for m in _DATE.finditer(text):
+        month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if year < 100:
+            year += 1900 if year >= 50 else 2000
+        try:
+            found.append(date(year, month, day))
+        except ValueError:
+            continue
+    return found
+
+
+def latest_date(text: str | None) -> date | None:
+    """The most recent date in `text` (a page shows its own, latest issue)."""
+    dates = parse_dates(text or "")
+    return max(dates) if dates else None
+
+
+def header_revision(header: str | None) -> str | None:
+    """The document name in a header line, without date, page or paragraph refs.
+
+    "9/27/01 AC 43.13-1B CHG 1 Par 3-2 Page 3-3" -> "AC 43.13-1B CHG 1".
+    None for a line that is only a page number.
+    """
+    if not header:
+        return None
+    text = _DATE.sub(" ", header)
+    text = _PAGE_WORD.sub(" ", text)
+    text = _PAR_REF.sub(" ", text)
+    text = " ".join(text.split()).strip(" -|,")
+    return text if any(ch.isalpha() for ch in text) else None
+
+
+def running_headers(
+    pages_lines: list[list[str]], edge: int = 3, min_share: float = 0.25
+) -> list[str | None]:
+    """Each page's running header line, as printed, before cleaning removes it.
+
+    Taken from the page's edge lines: one carrying a date (a change-page
+    manual's changed pages carry the change's date, and may be too few to count
+    as repeated), else one that repeats across pages. Never a line that is
+    only a page number.
+    """
+    repeated = _repeated_edges(pages_lines, edge, min_share)
+    headers: list[str | None] = []
+    for lines in pages_lines:
+        width = _edge_width(lines, edge)
+        edges = [
+            line.strip()
+            for i, line in enumerate(lines)
+            if (i < width or i >= len(lines) - width)
+            and len(line.strip()) <= MAX_HEADER_CHARS
+            and header_revision(line)
+        ]
+        dated = [line for line in edges if parse_dates(line)]
+        furniture = [line for line in edges if _normalise_edge(line) in repeated]
+        found = dated or furniture
+        headers.append(found[0] if found else None)
+    return headers
+
+
+def document_revision(
+    headers: list[str | None], given: str | None = None, fallback: str | None = None
+) -> tuple[str | None, date | None]:
+    """The document's revision and its date, from its pages' headers.
+
+    An explicit `given` always wins. Otherwise the header with the latest date
+    (a change page names the change: "AC 43.13-1B CHG 1"), else the most common
+    header, else `fallback` (the document title). The date is the latest issue
+    printed on any page.
+    """
+    dated = [(d, h) for h in headers if h and (d := latest_date(h))]
+    newest = max(dated, key=lambda pair: pair[0]) if dated else None
+    issued = newest[0] if newest else None
+    if given and given.strip():
+        return given.strip(), issued
+    if newest is not None and (revision := header_revision(newest[1])):
+        return revision, issued
+    names = Counter(r for h in headers if (r := header_revision(h)))
+    if names:
+        return names.most_common(1)[0][0], issued
+    return (fallback or None), issued
+
+
+# Change markers at the end of a revision name: "CHG 1", "Change 2", "Rev A".
+_CHANGE_MARKER = re.compile(
+    r"\s*[,(]?\s*\b(?:CHG|Chg|CHANGE|Change|REV|Rev|REVISION|Revision)\.?\s*[\w-]+\)?\s*$"
+)
+
+
+def document_key(revision: str | None) -> str | None:
+    """What stays the same across revisions: "AC 43.13-1B CHG 1" -> "AC 43.13-1B"."""
+    if not revision:
+        return None
+    key = revision
+    while (stripped := _CHANGE_MARKER.sub("", key)) != key:
+        key = stripped
+    return " ".join(key.split()) or None
 
 
 def join_lines(lines: list[str]) -> str:
@@ -238,6 +363,7 @@ def extract_pages(
         [line for line in raw.splitlines() if line.strip()] for raw in raw_pages
     ]
     labels = [find_page_label(lines) for lines in lines_per_page]
+    headers = running_headers(lines_per_page)
     cleaned = strip_repeated_edges(lines_per_page)
     texts = [join_lines(lines) for lines in cleaned]
 
@@ -255,7 +381,15 @@ def extract_pages(
         if number in ocr_text and _alnum_count(ocr_text[number]) >= MIN_PAGE_ALNUM:
             text = join_lines(ocr_text[number].splitlines())
             used_ocr = True
-        pages.append(PageText(number=number, label=labels[i], text=text, ocr=used_ocr))
+        pages.append(
+            PageText(
+                number=number,
+                label=labels[i],
+                text=text,
+                ocr=used_ocr,
+                header=headers[i],
+            )
+        )
 
     if repair_words:
         counts = word_counts([page.text for page in pages])
@@ -265,6 +399,7 @@ def extract_pages(
                 label=page.label,
                 text=repair_split_words(page.text, counts),
                 ocr=page.ocr,
+                header=page.header,
             )
             for page in pages
         ]
@@ -460,6 +595,7 @@ def chunk_pages(
                     page=page.number,
                     page_label=page.label,
                     text=text,
+                    page_header=page.header,
                 )
             )
     return chunks

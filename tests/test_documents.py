@@ -395,9 +395,18 @@ class FakeIngest:
         self.error: Exception | None = None
 
     async def __call__(
-        self, session, ollama, data, filename, title=None, progress=None
+        self,
+        session,
+        ollama,
+        data,
+        filename,
+        title=None,
+        progress=None,
+        revision=None,
+        key=None,
     ):
         self.calls.append((data, filename, title))
+        self.revisions = (revision, key)
         if self.error:
             raise self.error
         return IngestedDocument(
@@ -430,8 +439,20 @@ async def test_upload_returns_the_document_summary(client, fake_ingest):
     assert response.json() == {
         "document_id": 3, "title": "My Manual", "filename": "manual.pdf",
         "pages": 12, "chunks": 40, "ocr_pages": 0, "duplicate": False,
+        "revision": None, "revision_date": None, "document_key": None,
+        "superseded": False,
     }  # fmt: skip
     assert fake_ingest.calls == [(b"%PDF-1.4 fake", "manual.pdf", "My Manual")]
+    assert fake_ingest.revisions == (None, None)  # parsed from the headers
+
+
+@pytest.mark.redis
+async def test_upload_passes_a_given_revision_and_key(client, fake_ingest):
+    response = await _upload(
+        client, data={"revision": "AC 43.13-1B CHG 1", "document_key": "AC 43.13-1B"}
+    )
+    assert response.status_code == 200
+    assert fake_ingest.revisions == ("AC 43.13-1B CHG 1", "AC 43.13-1B")
 
 
 @pytest.mark.redis
@@ -650,7 +671,17 @@ async def test_real_database_search_returns_the_page(db_session):
     top, distance = hits[0]
     assert top.id == target.id and distance < 1e-6
     assert (top.page, top.page_label, top.document_id) == (2, "1-2", result.document_id)
-    assert "page 1-2 (PDF page 2)" in build_prompt("q?", [(top, distance)])
+    # The revision and the page's own issue, parsed from its running header
+    # ("9/8/98 AC 99.99-1A"), reach the model's source line.
+    assert "Source: AC 99.99-1A, page 1-2 (issued 1998-09-08, PDF page 2)" in (
+        build_prompt("q?", [(top, distance)])
+    )
+    assert (result.revision, str(result.revision_date), result.document_key) == (
+        "AC 99.99-1A",
+        "1998-09-08",
+        "AC 99.99-1A",
+    )
+    assert top.metadata_["page_issued"] == "1998-09-08"
 
 
 async def test_the_split_word_setting_reaches_the_stored_text(no_existing, monkeypatch):
