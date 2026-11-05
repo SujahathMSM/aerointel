@@ -368,7 +368,7 @@ normalised question, a hash of its guard words, its embedding and the answer.
 | Setting | Default | What it does |
 |---|---|---|
 | `ANSWER_CACHE_ENABLED` | `false` | `true` turns the cache on (one Redis list per bucket). |
-| `ANSWER_CACHE_MIN_SIMILARITY` | `0.97` | Cosine similarity two questions' embeddings need, 0–1. Deliberately strict; measure on real paraphrases before lowering it. |
+| `ANSWER_CACHE_MIN_SIMILARITY` | `0.97` | Cosine similarity two questions' embeddings need, 0–1. Deliberately strict; measure with `evals.cache_eval` before changing it. |
 | `ANSWER_CACHE_TTL_SECONDS` | `86400` | How long a bucket lives after its last new answer. |
 | `ANSWER_CACHE_MAX_ENTRIES` | `20` | Answers kept per bucket, newest first. |
 
@@ -376,6 +376,26 @@ Redis down: lookups are misses and stores are skipped (logged), behind a 0.5 s
 timeout and a circuit breaker — the cache is an optimisation, never a dependency,
 so it fails open like rate limiting. With the cache on, the question is embedded
 once and that vector is used by retrieval too, so the cache adds no model call.
+
+**Choosing the threshold.** `evals/cache_pairs.json` holds labelled question
+pairs on AC 43.13-1B: "same" (A's answer correctly answers B: paraphrases,
+reordered words, a polite wrapper) and "different" (it does not: another bolt
+size, minimum vs maximum, galvanic vs exfoliation corrosion, small vs large
+holes). Most "different" pairs are picked to retrieve the same passages, since
+only those can share a bucket.
+
+```powershell
+python -m evals.cache_eval                  # Ollama + Postgres with the manual ingested
+python -m evals.cache_eval --no-retrieval   # Ollama only; assumes every pair shares its context
+python -m evals.cache_eval --save evals/results/cache.json
+```
+
+It embeds each pair with the real model, applies the guard words, runs both
+questions through `prepare_answer()` to see whether they would share a bucket,
+and prints right reuses and **wrong reuses** at each threshold, plus the lowest
+threshold with no wrong reuse (plus 0.01). Wrong reuses must be 0 at the
+configured value. CI checks the pair file and the guard-word expectations
+written in it (`tests/test_cache_eval.py`) without a model.
 
 ### Streaming answers (Phase 2)
 

@@ -165,6 +165,14 @@ def test_negations_and_limits_are_guard_words():
     assert question_guard("minimum edge distance") != question_guard(
         "maximum edge distance"
     )
+    # inflected forms count as their base word
+    assert question_guard("when it is installed") == question_guard("at installation")
+    assert question_guard("when it is installed") != question_guard(
+        "when it is removed"
+    )
+    assert question_guard("min edge distance") == question_guard(
+        "minimum edge distance"
+    )
 
 
 def test_ordinary_wording_is_not_a_guard_word():

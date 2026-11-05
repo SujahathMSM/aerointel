@@ -51,6 +51,7 @@ python -m evals.run_eval --retriever hybrid --reranker crossencoder --faithfulne
 python -m evals.doc_eval [--retriever hybrid] [--neighbors 1] [--show ID|all]   # real documents, scored by page (needs the FAA manual ingested)
 python scripts/ingest_pdfs.py data/aviation [--dry-run] [--replace]   # ingest PDFs; --replace re-chunks stored ones
 python -m evals.live_eval [--retriever hybrid] [--check-only] [--save F]   # trust layer on the live model (needs Ollama)
+python -m evals.cache_eval [--no-retrieval] [--save F]   # answer-cache threshold: wrong/right reuses on labelled pairs (needs Ollama)
 
 # Embedding version migration (rows are tagged with embedding_model; never silently mix models)
 python scripts/backfill_embeddings.py --dry-run
@@ -121,7 +122,8 @@ so a corpus/prompt/model change is a new bucket, not a stale hit. Within a bucke
 hit needs cosine similarity >= `ANSWER_CACHE_MIN_SIMILARITY` *and* the same guard
 words (`question_guard()`: numbers/identifiers, negations, min/max-type
 qualifiers). The figure check re-runs on a hit; a flagged answer is never stored.
-Fails open on Redis errors (miss/skip + circuit breaker). With the cache on,
+Fails open on Redis errors (miss/skip + circuit breaker). Choose the threshold with
+`evals.cache_eval` (`evals/cache_pairs.json`); wrong reuses must be 0. With the cache on,
 `prepare_answer()` embeds the question once and passes `query_embedding` down to
 `retrieve()`, so it costs no extra Ollama call.
 

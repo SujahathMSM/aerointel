@@ -53,51 +53,46 @@ _WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
 
 _NEGATIONS = frozenset({"not", "no", "never", "without", "except", "cannot", "nor"})
 
-# Words that flip a maintenance answer while barely moving the embedding.
-# Not a list of synonyms: a word here must simply appear in both questions or
+# Words that flip a maintenance answer while barely moving the embedding, each
+# mapped to one base form so "installed" and "installation" count as "install".
+# Not a list of synonyms: a base form must simply appear in both questions or
 # in neither.
-_QUALIFIERS = frozenset(
-    {
-        "min",
-        "minimum",
-        "max",
-        "maximum",
-        "upper",
-        "lower",
-        "above",
-        "below",
-        "before",
-        "after",
-        "increase",
-        "decrease",
-        "more",
-        "less",
-        "higher",
-        "inboard",
-        "outboard",
-        "left",
-        "right",
-        "forward",
-        "aft",
-        "front",
-        "rear",
-        "open",
-        "close",
-        "closed",
-        "install",
-        "installation",
-        "remove",
-        "removal",
-        "tighten",
-        "loosen",
-        "first",
-        "last",
-        "hot",
-        "cold",
-        "wet",
-        "dry",
-    }
-)
+_QUALIFIER_FORMS = {
+    "min": ("min", "minimum", "minimal"),
+    "max": ("max", "maximum", "maximal"),
+    "upper": ("upper",),
+    "lower": ("lower",),
+    "above": ("above",),
+    "below": ("below",),
+    "before": ("before", "prior"),
+    "after": ("after",),
+    "more": ("more",),
+    "less": ("less", "fewer"),
+    "higher": ("higher",),
+    "increase": ("increase", "increased", "increases", "increasing"),
+    "decrease": ("decrease", "decreased", "decreases", "decreasing"),
+    "inboard": ("inboard",),
+    "outboard": ("outboard",),
+    "left": ("left",),
+    "right": ("right",),
+    "forward": ("forward",),
+    "aft": ("aft",),
+    "front": ("front",),
+    "rear": ("rear",),
+    "open": ("open", "opened", "opening", "opens"),
+    "close": ("close", "closed", "closing", "closes"),
+    "install": ("install", "installed", "installing", "installs", "installation"),
+    "remove": ("remove", "removed", "removing", "removes", "removal"),
+    "tighten": ("tighten", "tightened", "tightening", "tightens"),
+    "loosen": ("loosen", "loosened", "loosening", "loosens"),
+    "first": ("first",),
+    "last": ("last",),
+    "hot": ("hot",),
+    "cold": ("cold",),
+    "wet": ("wet",),
+    "dry": ("dry",),
+}
+_QUALIFIERS = {form: base for base, forms in _QUALIFIER_FORMS.items() for form in forms}
 
 
 def normalize_question(question: str) -> str:
@@ -115,7 +110,7 @@ def question_guard(question: str) -> tuple[str, ...]:
         elif word in _NEGATIONS:
             guard.add("not" if word == "cannot" else word)
         elif word in _QUALIFIERS:
-            guard.add(word)
+            guard.add(_QUALIFIERS[word])
     return tuple(sorted(guard))
 
 
